@@ -34,3 +34,5 @@ build/
 
 ### repo cloning ###
 data/repositories/
+
+.env

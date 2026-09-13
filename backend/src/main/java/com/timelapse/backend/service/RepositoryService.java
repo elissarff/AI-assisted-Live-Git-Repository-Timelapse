@@ -3,10 +3,9 @@ package com.timelapse.backend.service;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
+import org.eclipse.jgit.errors.RepositoryNotFoundException;
 import org.eclipse.jgit.lib.Repository;
 import org.springframework.stereotype.Service;
 
@@ -15,38 +14,46 @@ import com.timelapse.backend.dto.CommitDto;
 import com.timelapse.backend.dto.RegisteredRepositoryDto;
 import com.timelapse.backend.dto.RepositoryInfoDto;
 import com.timelapse.backend.dto.SyncResultDto;
-import com.timelapse.backend.model.RegisteredRepository;
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.repository.RepositoryJpaRepository;
+
 
 @Service
 public class RepositoryService {
-
+    private final RepositoryJpaRepository JPArepository;
     private final GitService gitService;
     private final GitProperties properties;
 
-    /*
-     * Temporary replacement for database.
-     */
-    private final Map<String, RegisteredRepository>
-            repositories =
-            new ConcurrentHashMap<>();
 
     public RepositoryService(
-            GitService gitService,
-            GitProperties properties
+        GitService gitService,
+        GitProperties properties,
+        RepositoryJpaRepository JPArepository
     ) {
         this.gitService = gitService;
         this.properties = properties;
+        this.JPArepository = JPArepository;
     }
 
     public RegisteredRepositoryDto register(
-            String remoteUrl
+        String remoteUrl
     ) throws Exception {
 
-        String id =
-                UUID.randomUUID().toString();
+        if (JPArepository
+                .existsByRemoteUrl(remoteUrl)) {
+                throw new IllegalArgumentException(
+                        "Repository already registered: "
+                                + remoteUrl
+                );
+        }
+
+        UUID repoKey =
+                UUID.randomUUID();
 
         String name =
-                extractRepositoryName(remoteUrl);
+                extractRepositoryName(
+                        remoteUrl
+                );
 
         Path repositoriesDirectory =
                 Path.of(
@@ -60,7 +67,7 @@ public class RepositoryService {
 
         Path gitDirectory =
                 repositoriesDirectory.resolve(
-                        id + ".git"
+                        repoKey + ".git"
                 );
 
         gitService.cloneBare(
@@ -71,12 +78,12 @@ public class RepositoryService {
         String branch;
 
         try (Repository repository =
-                     gitService.openRepository(
-                             gitDirectory
-                     )) {
+                        gitService.openRepository(
+                                gitDirectory
+                        )) {
 
-            branch =
-                    repository.getBranch();
+                branch =
+                        repository.getBranch();
         }
 
         String headSha =
@@ -85,58 +92,71 @@ public class RepositoryService {
                         branch
                 );
 
-        RegisteredRepository registered =
-                new RegisteredRepository(
-                        id,
-                        name,
-                        remoteUrl,
-                        gitDirectory,
-                        branch,
-                        headSha
-                );
+        RepositoryEntity entity =
+                new RepositoryEntity();
 
-        repositories.put(
-                id,
-                registered
+        entity.setRepoKey(repoKey);
+        entity.setName(name);
+        entity.setRemoteUrl(remoteUrl);
+        entity.setDefaultBranch(branch);
+        entity.setLocalGitDirectory(
+                gitDirectory.toString()
+        );
+        entity.setLastProcessedSha(
+                headSha
         );
 
+        entity =
+                JPArepository.save(
+                        entity
+                );
+
         return new RegisteredRepositoryDto(
-                id,
-                name,
-                remoteUrl,
-                branch,
-                headSha
+                entity.getRepoKey().toString(),
+                entity.getName(),
+                entity.getRemoteUrl(),
+                entity.getDefaultBranch(),
+                entity.getLastProcessedSha()
         );
     }
 
+    
     public RepositoryInfoDto inspect(
-            String id
-    ) throws Exception {
+        String id
+        ) throws Exception {
 
-        RegisteredRepository repository =
+        RepositoryEntity repository =
                 requireRepository(id);
+
+        Path gitDirectory =
+                Path.of(
+                        repository
+                                .getLocalGitDirectory()
+                );
 
         String headSha =
                 gitService.getRemoteBranchHead(
-                        repository.getGitDirectory(),
+                        gitDirectory,
                         repository.getDefaultBranch()
                 );
 
         List<CommitDto> recentCommits =
                 gitService.getRecentCommits(
-                        repository.getGitDirectory(),
+                        gitDirectory,
                         repository.getDefaultBranch(),
                         10
                 );
 
         int commitCount =
                 gitService.countCommits(
-                        repository.getGitDirectory(),
+                        gitDirectory,
                         repository.getDefaultBranch()
                 );
 
         return new RepositoryInfoDto(
-                repository.getId(),
+                repository
+                        .getRepoKey()
+                        .toString(),
                 repository.getName(),
                 repository.getRemoteUrl(),
                 repository.getDefaultBranch(),
@@ -150,41 +170,48 @@ public class RepositoryService {
             String id
     ) throws Exception {
 
-        RegisteredRepository repository =
+        RepositoryEntity repository =
                 requireRepository(id);
 
+        Path gitDirectory =
+                Path.of(
+                        repository
+                                .getLocalGitDirectory()
+                );
+
         String previousSha =
-                repository.getLastProcessedSha();
+                repository
+                        .getLastProcessedSha();
 
         gitService.fetch(
-                repository.getGitDirectory()
+                gitDirectory
         );
 
         String currentSha =
                 gitService.getRemoteBranchHead(
-                        repository.getGitDirectory(),
+                        gitDirectory,
                         repository.getDefaultBranch()
                 );
 
         List<CommitDto> newCommits =
                 gitService.getCommitsBetween(
-                        repository.getGitDirectory(),
+                        gitDirectory,
                         previousSha,
                         currentSha
                 );
-
-        /*
-         * Eventually:
-         *
-         * commitAnalysisService.process(newCommits)
-         */
 
         repository.setLastProcessedSha(
                 currentSha
         );
 
+        JPArepository.save(
+                repository
+        );
+
         return new SyncResultDto(
-                id,
+                repository
+                        .getRepoKey()
+                        .toString(),
                 previousSha,
                 currentSha,
                 newCommits.size(),
@@ -192,35 +219,37 @@ public class RepositoryService {
         );
     }
 
-    public RegisteredRepository findByRemoteUrl(
-            String remoteUrl
-    ) {
+    private RepositoryEntity requireRepository(
+        String id
+    ) throws RepositoryNotFoundException {
 
-        return repositories
-                .values()
-                .stream()
-                .filter(repo ->
-                        repo.getRemoteUrl()
-                                .equals(remoteUrl)
-                )
-                .findFirst()
-                .orElse(null);
-    }
+        UUID repoKey;
 
-    private RegisteredRepository requireRepository(
-            String id
-    ) {
-
-        RegisteredRepository repository =
-                repositories.get(id);
-
-        if (repository == null) {
-            throw new IllegalArgumentException(
-                    "Repository not found: " + id
-            );
+        try {
+                repoKey = UUID.fromString(id);
+        } catch (IllegalArgumentException e) {
+                throw new RepositoryNotFoundException(
+                        "Invalid repository id: " + id
+                );
         }
 
-        return repository;
+        return JPArepository
+                .findByRepoKey(repoKey)
+                .orElseThrow(() ->
+                        new RepositoryNotFoundException(
+                                "Repository not found: "
+                                        + id
+                        )
+                );
+    }
+
+    public RepositoryEntity findByRemoteUrl(
+        String remoteUrl
+    ) {
+
+        return JPArepository
+                .findByRemoteUrl(remoteUrl)
+                .orElse(null);
     }
 
     private String extractRepositoryName(

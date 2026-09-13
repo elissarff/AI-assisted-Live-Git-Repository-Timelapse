@@ -10,8 +10,6 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
-import org.eclipse.jgit.transport.CredentialsProvider;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.springframework.stereotype.Service;
 
 import com.timelapse.backend.config.GitProperties;
@@ -38,12 +36,6 @@ public class GitService {
                 .setURI(remoteUrl)
                 .setDirectory(destination.toFile())
                 .setBare(true);
-
-        CredentialsProvider credentials = credentials();
-
-        if (credentials != null) {
-            cloneCommand.setCredentialsProvider(credentials);
-        }
 
         try (Git ignored = cloneCommand.call()) {
             System.out.println(
@@ -76,12 +68,6 @@ public class GitService {
 
             var fetchCommand = git.fetch()
                     .setRemote("origin");
-
-            CredentialsProvider credentials = credentials();
-
-            if (credentials != null) {
-                fetchCommand.setCredentialsProvider(credentials);
-            }
 
             fetchCommand.call();
         }
@@ -280,21 +266,6 @@ public class GitService {
                 commit.getAuthorIdent().getName(),
                 commit.getAuthorIdent()
                         .getWhenAsInstant()
-        );
-    }
-
-    private CredentialsProvider credentials() {
-
-        String token =
-                properties.getGitHubToken();
-
-        if (token == null || token.isBlank()) {
-            return null;
-        }
-
-        return new UsernamePasswordCredentialsProvider(
-                properties.getGitHubUsername(),
-                token
         );
     }
 }

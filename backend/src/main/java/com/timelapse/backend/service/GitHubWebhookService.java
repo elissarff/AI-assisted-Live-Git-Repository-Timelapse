@@ -2,7 +2,7 @@ package com.timelapse.backend.service;
 
 import org.springframework.stereotype.Service;
 
-import com.timelapse.backend.model.RegisteredRepository;
+import com.timelapse.backend.entity.RepositoryEntity;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -51,10 +51,8 @@ public class GitHubWebhookService {
                 "Webhook received for: " + cloneUrl
         );
 
-        RegisteredRepository repository =
-                repositoryService.findByRemoteUrl(
-                        cloneUrl
-                );
+        RepositoryEntity repository =
+                repositoryService.findByRemoteUrl(cloneUrl);
 
         if (repository == null) {
             System.out.println(
@@ -66,7 +64,7 @@ public class GitHubWebhookService {
 
         var result =
                 repositoryService.sync(
-                        repository.getId()
+                        repository.getRepoKey().toString()
                 );
 
         System.out.println(
