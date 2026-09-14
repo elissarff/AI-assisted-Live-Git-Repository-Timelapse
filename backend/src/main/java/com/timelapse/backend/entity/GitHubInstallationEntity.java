@@ -1,7 +1,14 @@
 package com.timelapse.backend.entity;
 
-import jakarta.persistence.*;
 import java.time.OffsetDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "github_installations")
@@ -29,12 +36,29 @@ public class GitHubInstallationEntity {
         }
     }
 
-    public Long getId() { return id; }
-    public Long getGithubInstallationId() { return githubInstallationId; }
-    public void setGithubInstallationId(Long githubInstallationId) { this.githubInstallationId = githubInstallationId; }
-    public Long getGithubAccountId() { return githubAccountId; }
-    public void setGithubAccountId(Long githubAccountId) { this.githubAccountId = githubAccountId; }
-    public String getGithubAccountLogin() { return githubAccountLogin; }
-    public void setGithubAccountLogin(String githubAccountLogin) { this.githubAccountLogin = githubAccountLogin; }
-    public OffsetDateTime getCreatedAt() { return createdAt; }
+    public Long getId() { 
+        return id; 
+    }
+    public Long getGithubInstallationId() { 
+        return githubInstallationId; 
+    }
+
+    public void setGithubInstallationId(Long githubInstallationId) { 
+        this.githubInstallationId = githubInstallationId; 
+    }
+    public Long getGithubAccountId() { 
+        return githubAccountId; 
+    }
+    public void setGithubAccountId(Long githubAccountId) { 
+        this.githubAccountId = githubAccountId; 
+    }
+    public String getGithubAccountLogin() { 
+        return githubAccountLogin; 
+    }
+    public void setGithubAccountLogin(String githubAccountLogin) { 
+        this.githubAccountLogin = githubAccountLogin; 
+    }
+    public OffsetDateTime getCreatedAt() { 
+        return createdAt; 
+    }
 }
