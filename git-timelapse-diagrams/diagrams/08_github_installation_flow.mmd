@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor U as User
+    participant FE as React
+    participant GH as GitHub
+    participant BE as Spring Backend
+    participant DB as PostgreSQL
+
+    U->>FE: Connect GitHub
+    FE->>GH: Open GitHub App installation
+    GH->>U: Choose repositories
+    U->>GH: Install
+    GH->>BE: Redirect to setup URL
+    BE->>GH: Validate installation / list repositories
+    BE->>DB: Store installation + repository IDs
+    BE-->>FE: Connected repositories
+    FE-->>U: Open Timelapse

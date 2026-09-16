@@ -1,0 +1,22 @@
+flowchart LR
+    U[User / Developer] -->|Connect GitHub / Explore| FE[React Frontend]
+    FE -->|REST HTTPS| API[Spring Boot REST API]
+    API --> RS[Repository Service]
+    RS --> GS[Git Service / JGit]
+    GS <--> G[(GitHub Repository)]
+    G -->|Push event| WH[GitHub App Webhook]
+    WH --> WSC[Webhook Controller]
+    WSC --> WSS[Webhook Service]
+    WSS --> RS
+
+    RS --> MET[Metrics / Evolution Analysis]
+    RS --> AI[LLM Analysis Service]
+    AI --> EMB[Embedding Service]
+    AI <--> LLM[LLM Provider]
+    EMB <--> LLM
+    RS <--> DB[(PostgreSQL + pgvector)]
+    AI <--> DB
+    EMB <--> DB
+
+    RS -->|WebSocket / SSE| FE
+    FE --> TL[Timelapse + Metrics + Search UI]

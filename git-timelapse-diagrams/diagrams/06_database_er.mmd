@@ -1,0 +1,60 @@
+erDiagram
+    GITHUB_INSTALLATIONS ||--o{ REPOSITORIES : authorizes
+    REPOSITORIES ||--o{ ANALYSIS_PROFILES : has
+    REPOSITORIES ||--o{ COMMIT_EMBEDDINGS : has
+    REPOSITORIES ||--o{ COMMIT_ANALYSIS : has
+    ANALYSIS_PROFILES ||--o{ COMMIT_EMBEDDINGS : generates
+    ANALYSIS_PROFILES ||--o{ COMMIT_ANALYSIS : generates
+
+    GITHUB_INSTALLATIONS {
+      bigint id PK
+      bigint github_installation_id
+      bigint github_account_id
+      text github_account_login
+      timestamptz created_at
+    }
+    REPOSITORIES {
+      bigint id PK
+      text repo_key UK
+      bigint provider_repository_id
+      bigint installation_id FK
+      text remote_url
+      text default_branch
+      text local_git_directory
+      text last_processed_sha
+      timestamptz created_at
+      timestamptz last_opened_at
+    }
+    ANALYSIS_PROFILES {
+      bigint id PK
+      bigint repository_id FK
+      text embedding_model
+      int embedding_dimensions
+      text llm_model
+      text prompt_version
+      timestamptz created_at
+    }
+    COMMIT_EMBEDDINGS {
+      bigint id PK
+      bigint repository_id FK
+      bigint analysis_profile_id FK
+      text commit_sha
+      text document_type
+      text file_path
+      text content_hash
+      vector embedding
+      timestamptz created_at
+    }
+    COMMIT_ANALYSIS {
+      bigint id PK
+      bigint repository_id FK
+      bigint analysis_profile_id FK
+      text commit_sha
+      text summary
+      text purpose
+      text category
+      jsonb affected_components
+      text significance
+      text source_hash
+      timestamptz created_at
+    }

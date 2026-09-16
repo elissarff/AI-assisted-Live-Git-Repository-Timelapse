@@ -1,5 +1,14 @@
 package com.timelapse.backend.service;
 
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+
 import com.timelapse.backend.config.GitProperties;
 import com.timelapse.backend.dto.CloneRepositoryRequest;
 import com.timelapse.backend.dto.CommitDto;
@@ -12,13 +21,6 @@ import com.timelapse.backend.entity.RepositoryEntity;
 import com.timelapse.backend.entity.RepositoryVisibility;
 import com.timelapse.backend.repository.RepositoryJpaRepository;
 import com.timelapse.backend.service.github.GitHubInstallationService;
-import org.springframework.stereotype.Service;
-
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.UUID;
 
 @Service
 public class RepositoryService {
@@ -42,8 +44,12 @@ public class RepositoryService {
 
     public RegisteredRepositoryDto register(CloneRepositoryRequest request) throws Exception {
         String remoteUrl = normalizeAndValidateRemoteUrl(request.remoteUrl());
-        if (repositoryJpaRepository.existsByRemoteUrl(remoteUrl)) {
-            throw new IllegalArgumentException("Repository already registered: " + remoteUrl);
+        Optional<RepositoryEntity> existing =
+        repositoryJpaRepository.findByRemoteUrl(request.remoteUrl());
+
+        // TEMPORARY
+        if (existing.isPresent()) {
+            return toRegisteredDto(existing.get(), existing.get().getLastProcessedSha());
         }
 
         MonitoringType monitoringType = request.monitoringType() == null ? MonitoringType.POLLING : request.monitoringType();

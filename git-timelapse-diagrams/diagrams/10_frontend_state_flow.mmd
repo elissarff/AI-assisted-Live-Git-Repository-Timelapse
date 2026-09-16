@@ -1,0 +1,16 @@
+stateDiagram-v2
+    [*] --> NoRepository
+    NoRepository --> Analyzing: Open repository
+    Analyzing --> Ready: Initial analysis complete
+    Analyzing --> Failed: Processing error
+    Failed --> Analyzing: Retry
+    Ready --> Playing: Play
+    Playing --> Paused: Pause
+    Paused --> Playing: Play
+    Playing --> Ready: End reached
+    Ready --> InspectingCommit: Select commit
+    InspectingCommit --> Ready: Close details
+    Ready --> Searching: Semantic search
+    Searching --> InspectingCommit: Select result
+    Ready --> Syncing: New webhook event
+    Syncing --> Ready: Timeline updated

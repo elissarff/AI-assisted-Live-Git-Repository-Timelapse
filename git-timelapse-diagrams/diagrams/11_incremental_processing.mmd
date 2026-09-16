@@ -1,0 +1,16 @@
+flowchart TD
+    A[Webhook or manual sync] --> B[JGit fetch]
+    B --> C[Read stored lastProcessedSha]
+    C --> D[Read current remote HEAD]
+    D --> E{Same SHA?}
+    E -- Yes --> F[No new work]
+    E -- No --> G[Find commits between old SHA and HEAD]
+    G --> H[Extract Git-derived evidence]
+    H --> I{Cached AI record valid?}
+    I -- Yes --> J[Reuse analysis]
+    I -- No --> K[Generate analysis / embeddings]
+    K --> L[Persist expensive AI-derived data]
+    J --> M[Publish commit DTO]
+    L --> M
+    M --> N[Advance lastProcessedSha]
+    N --> O[Notify React via WebSocket/SSE]
