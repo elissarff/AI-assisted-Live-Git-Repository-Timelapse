@@ -1,35 +1,21 @@
-import { API_BASE_URL } from "../config";
-import type { ConnectedInstallation, GitHubRepository } from "../types/github";
+import { api } from "./api";
+import type {
+  GitHubInstallation,
+  GitHubRepository,
+} from "../types/github";
 
-export async function connectInstallation(
+export function connectInstallation(
   installationId: number
-): Promise<ConnectedInstallation> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/github/installations/${installationId}/connect`,
-    { method: "POST" }
+): Promise<GitHubInstallation> {
+  return api.post<GitHubInstallation>(
+    `/api/github/installations/${installationId}/connect`
   );
-
-  if (!response.ok) {
-    throw new Error(
-      `Could not register GitHub installation (${response.status})`
-    );
-  }
-
-  return response.json();
 }
 
-export async function getInstallationRepositories(
+export function getInstallationRepositories(
   installationId: number
 ): Promise<GitHubRepository[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/github/installations/${installationId}/repositories`
+  return api.get<GitHubRepository[]>(
+    `/api/github/installations/${installationId}/repositories`
   );
-
-  if (!response.ok) {
-    throw new Error(
-      `Could not load GitHub repositories (${response.status})`
-    );
-  }
-
-  return response.json();
 }

@@ -1,3 +1,9 @@
+export type GitHubInstallation = {
+  installationId: number;
+  accountId: number;
+  accountLogin: string;
+};
+
 export type GitHubRepository = {
   providerRepositoryId: number;
   fullName: string;
@@ -5,13 +11,5 @@ export type GitHubRepository = {
   privateRepository: boolean;
   defaultBranch: string;
   cloneUrl: string;
-  installationId: number;
-  accountId: number;
-  accountLogin: string;
-};
-
-export type ConnectedInstallation = {
-  installationId: number;
-  accountId: number;
-  accountLogin: string;
+  htmlUrl: string;
 };

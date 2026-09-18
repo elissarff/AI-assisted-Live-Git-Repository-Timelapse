@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRepository } from "../api/repositories";
-import type { RegisteredRepository } from "../types/repository";
+import type { Repository } from "../types/repository";
 
 export default function RepositoryPage() {
   const { repoKey } = useParams();
   const [repository, setRepository] =
-    useState<RegisteredRepository | null>(null);
+    useState<Repository | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,15 +36,15 @@ export default function RepositoryPage() {
         {repository && (
           <dl className="details">
             <dt>Repository key</dt>
-            <dd>{repository.repoKey}</dd>
-            <dt>Default branch</dt>
-            <dd>{repository.defaultBranch ?? "-"}</dd>
+            <dd>{repository.id}</dd>
+            <dt>Branch</dt>
+            <dd>{repository.branch ?? "-"}</dd>
             <dt>Visibility</dt>
             <dd>{repository.visibility ?? "-"}</dd>
             <dt>Monitoring</dt>
             <dd>{repository.monitoringType ?? "-"}</dd>
-            <dt>Last processed SHA</dt>
-            <dd>{repository.lastProcessedSha ?? repository.headSha ?? "-"}</dd>
+            <dt>Head SHA</dt>
+            <dd>{repository.headSha ?? "-"}</dd>
           </dl>
         )}
       </section>

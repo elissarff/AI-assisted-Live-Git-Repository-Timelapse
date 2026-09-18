@@ -1,20 +1,40 @@
-export type RegisteredRepository = {
-  repoKey: string;
-  name: string;
+export type MonitoringType =
+  | "POLLING"
+  | "WEBHOOK"
+  | "GITHUB_APP";
+
+export type RepositoryVisibility =
+  | "PUBLIC"
+  | "PRIVATE";
+
+export type CreateRepositoryRequest = {
+  remoteUrl: string;
+
   fullName?: string;
-  remoteUrl?: string;
-  defaultBranch?: string;
-  monitoringType?: string;
-  visibility?: string;
-  headSha?: string;
-  lastProcessedSha?: string;
+
+  providerRepositoryId?: number;
+
+  monitoringType: MonitoringType;
+
+  visibility: RepositoryVisibility;
+
+  installationId?: number;
 };
 
-export type RegisterRepositoryRequest = {
+export type Repository = {
+  id: string;
+  name: string;
   remoteUrl: string;
-  fullName: string;
-  providerRepositoryId: number;
-  monitoringType: "GITHUB_APP";
-  visibility: "PRIVATE" | "PUBLIC";
-  installationId: number;
+
+  branch: string;
+
+  fullName?: string;
+  providerRepositoryId?: number;
+
+  monitoringType: MonitoringType;
+  visibility: RepositoryVisibility;
+
+  installationId?: number;
+
+  headSha?: string;
 };

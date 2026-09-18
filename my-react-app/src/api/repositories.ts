@@ -1,36 +1,30 @@
-import { API_BASE_URL } from "../config";
+import { api } from "./api";
 import type {
-  RegisterRepositoryRequest,
-  RegisteredRepository,
+  CreateRepositoryRequest,
+  Repository,
 } from "../types/repository";
 
-export async function registerRepository(
-  request: RegisterRepositoryRequest
-): Promise<RegisteredRepository> {
-  const response = await fetch(`${API_BASE_URL}/api/repositories`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(
-      message || `Repository registration failed (${response.status})`
-    );
-  }
-
-  return response.json();
+export function registerRepository(
+  request: CreateRepositoryRequest
+): Promise<Repository> {
+  return api.post<Repository>(
+    "/api/repositories",
+    request
+  );
 }
 
-export async function getRepository(
+export function getRepository(
   repoKey: string
-): Promise<RegisteredRepository> {
-  const response = await fetch(`${API_BASE_URL}/api/repositories/${repoKey}`);
+): Promise<Repository> {
+  return api.get<Repository>(
+    `/api/repositories/${repoKey}`
+  );
+}
 
-  if (!response.ok) {
-    throw new Error(`Could not load repository (${response.status})`);
-  }
-
-  return response.json();
+export function syncRepository(
+  repoKey: string
+) {
+  return api.post(
+    `/api/repositories/${repoKey}/sync`
+  );
 }

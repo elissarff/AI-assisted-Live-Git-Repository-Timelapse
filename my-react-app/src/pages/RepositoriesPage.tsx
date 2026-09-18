@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { getInstallationRepositories } from "../api/github";
 import { registerRepository } from "../api/repositories";
 import type { GitHubRepository } from "../types/github";
+import { Repository } from "../types/repository";
 
 export default function RepositoriesPage() {
   const [searchParams] = useSearchParams();
@@ -43,9 +44,10 @@ export default function RepositoriesPage() {
         monitoringType: "GITHUB_APP",
         visibility: repo.privateRepository ? "PRIVATE" : "PUBLIC",
         installationId,
-      });
+      }) as Repository;
+      console.log('returned', registered);
 
-      navigate(`/repositories/${registered.repoKey}`);
+      navigate(`/repositories/${registered.id}`);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not register repository."
