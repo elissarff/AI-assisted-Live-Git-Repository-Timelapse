@@ -16,26 +16,27 @@ import com.timelapse.backend.dto.RegisteredRepositoryDto;
 import com.timelapse.backend.dto.RepositoryInfoDto;
 import com.timelapse.backend.dto.SyncResultDto;
 import com.timelapse.backend.entity.GitHubInstallationEntity;
-import com.timelapse.backend.entity.MonitoringType;
 import com.timelapse.backend.entity.RepositoryEntity;
-import com.timelapse.backend.entity.RepositoryVisibility;
 import com.timelapse.backend.repository.RepositoryJpaRepository;
+import com.timelapse.backend.service.git.GitMiningService;
 import com.timelapse.backend.service.github.GitHubInstallationService;
+import com.timelapse.backend.types.MonitoringType;
+import com.timelapse.backend.types.RepositoryVisibility;
 
 @Service
 public class RepositoryService {
     private final RepositoryJpaRepository repositoryJpaRepository;
-    private final GitService gitService;
+    private final GitMiningService gitMiningService;
     private final GitProperties properties;
     private final RepositorySyncService repositorySyncService;
     private final GitHubInstallationService gitHubInstallationService;
 
-    public RepositoryService(GitService gitService,
+    public RepositoryService(GitMiningService gitMiningService,
                              GitProperties properties,
                              RepositoryJpaRepository repositoryJpaRepository,
                              RepositorySyncService repositorySyncService,
                              GitHubInstallationService gitHubInstallationService) {
-        this.gitService = gitService;
+        this.gitMiningService = gitMiningService;
         this.properties = properties;
         this.repositoryJpaRepository = repositoryJpaRepository;
         this.repositorySyncService = repositorySyncService;
@@ -102,9 +103,9 @@ public class RepositoryService {
     public RepositoryInfoDto inspect(String id) throws Exception {
         RepositoryEntity repository = requireRepository(id);
         Path gitDirectory = Path.of(repository.getLocalGitDirectory());
-        String headSha = gitService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
-        List<CommitDto> recentCommits = gitService.getRecentCommits(gitDirectory, repository.getDefaultBranch(), 10);
-        int commitCount = gitService.countCommits(gitDirectory, repository.getDefaultBranch());
+        String headSha = gitMiningService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
+        List<CommitDto> recentCommits = gitMiningService.getRecentCommits(gitDirectory, repository.getDefaultBranch(), 10);
+        int commitCount = gitMiningService.countCommits(gitDirectory, repository.getDefaultBranch());
         return new RepositoryInfoDto(repository.getRepoKey().toString(), repository.getName(),
                 repository.getRemoteUrl(), repository.getDefaultBranch(), headSha, commitCount, recentCommits);
     }

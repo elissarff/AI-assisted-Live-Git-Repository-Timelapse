@@ -1,11 +1,13 @@
 package com.timelapse.backend.repository;
 
-import com.timelapse.backend.entity.MonitoringType;
-import com.timelapse.backend.entity.RepositoryEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.types.MonitoringType;
 
 public interface RepositoryJpaRepository extends JpaRepository<RepositoryEntity, Long> {
     Optional<RepositoryEntity> findByRepoKey(UUID repoKey);

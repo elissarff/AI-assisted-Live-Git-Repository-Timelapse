@@ -1,7 +1,7 @@
 package com.timelapse.backend.dto;
 
-import com.timelapse.backend.entity.MonitoringType;
-import com.timelapse.backend.entity.RepositoryVisibility;
+import com.timelapse.backend.types.MonitoringType;
+import com.timelapse.backend.types.RepositoryVisibility;
 
 public record RegisteredRepositoryDto(
         String id,

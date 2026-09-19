@@ -1,4 +1,4 @@
-package com.timelapse.backend.entity;
+package com.timelapse.backend.types;
 
 public enum MonitoringType {
     WEBHOOK,
