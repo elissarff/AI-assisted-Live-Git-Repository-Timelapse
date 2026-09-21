@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import com.timelapse.backend.config.GitProperties;
 import com.timelapse.backend.dto.CloneRepositoryRequest;
 import com.timelapse.backend.dto.CommitDto;
+import com.timelapse.backend.dto.CommitDetailDto;
+import com.timelapse.backend.dto.FileContentDto;
 import com.timelapse.backend.dto.RegisteredRepositoryDto;
 import com.timelapse.backend.dto.RepositoryInfoDto;
 import com.timelapse.backend.dto.SyncResultDto;
@@ -112,6 +114,51 @@ public class RepositoryService {
 
     public SyncResultDto sync(String id) throws Exception {
         return repositorySyncService.sync(id);
+    }
+
+    /**
+     * Returns the complete tracked/default-branch history in chronological
+     * order. Git remains authoritative; commit history is not duplicated in
+     * PostgreSQL.
+     */
+    public List<CommitDto> getTimeline(String id) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        Path gitDirectory = Path.of(repository.getLocalGitDirectory());
+        String headSha = gitMiningService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
+        if (headSha == null) return List.of();
+        return gitMiningService.getAllCommits(gitDirectory, headSha);
+    }
+
+    /** Returns the Git-derived details required by the commit detail view. */
+    public CommitDetailDto getCommitDetail(String id, String sha) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        validateSha(sha);
+        return gitMiningService.getCommitDetail(Path.of(repository.getLocalGitDirectory()), sha);
+    }
+
+    /** Returns a file exactly as it existed at the requested commit. */
+    public FileContentDto getFileContent(String id, String sha, String filePath) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        validateSha(sha);
+        if (filePath == null || filePath.isBlank()) {
+            throw new IllegalArgumentException("path is required");
+        }
+        if (filePath.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("Invalid file path");
+        }
+        return gitMiningService.getFileContent(
+                Path.of(repository.getLocalGitDirectory()), sha, filePath);
+    }
+
+    private void validateSha(String sha) {
+        if (sha == null || sha.isBlank()) {
+            throw new IllegalArgumentException("Commit SHA is required");
+        }
+        // Accept abbreviated Git object ids while rejecting revision expressions
+        // such as HEAD~1. The timelapse should address concrete commits only.
+        if (!sha.matches("[0-9a-fA-F]{4,64}")) {
+            throw new IllegalArgumentException("Invalid commit SHA: " + sha);
+        }
     }
 
     public RepositoryEntity requireRepository(String id) {
