@@ -1,13 +1,16 @@
 package com.timelapse.backend.service;
 
-import com.timelapse.backend.entity.MonitoringType;
-import com.timelapse.backend.entity.RepositoryEntity;
-import com.timelapse.backend.repository.RepositoryJpaRepository;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 
-import static org.mockito.Mockito.*;
+import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.repository.RepositoryJpaRepository;
+import com.timelapse.backend.types.MonitoringType;
 
 class RepositoryPollingServiceTest {
     @Test

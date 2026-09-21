@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { getInstallationRepositories } from "../api/github";
 import { registerRepository } from "../api/repositories";
 import type { GitHubRepository } from "../types/github";
-import { Repository } from "../types/repository";
+import type { Repository } from "../types/repository";
 
 export default function RepositoriesPage() {
   const [searchParams] = useSearchParams();
