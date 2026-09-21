@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.timelapse.backend.dto.CommitDetailDto;
 import com.timelapse.backend.dto.CommitDto;
 import com.timelapse.backend.dto.FileContentDto;
+import com.timelapse.backend.dto.RepositoryTreeDto;
 import com.timelapse.backend.service.RepositoryService;
 
 /**
@@ -52,6 +53,15 @@ public class CommitController {
             @PathVariable String sha
     ) throws Exception {
         return repositoryService.getCommitDetail(repositoryId, sha);
+    }
+
+    /** Complete file/folder structure exactly as it existed at this commit. */
+    @GetMapping("/{sha}/tree")
+    public RepositoryTreeDto treeAtCommit(
+            @PathVariable String repositoryId,
+            @PathVariable String sha
+    ) throws Exception {
+        return repositoryService.getRepositoryTree(repositoryId, sha);
     }
 
     /**

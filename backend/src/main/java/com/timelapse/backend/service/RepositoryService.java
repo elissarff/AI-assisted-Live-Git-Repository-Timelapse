@@ -16,6 +16,7 @@ import com.timelapse.backend.dto.CommitDetailDto;
 import com.timelapse.backend.dto.FileContentDto;
 import com.timelapse.backend.dto.RegisteredRepositoryDto;
 import com.timelapse.backend.dto.RepositoryInfoDto;
+import com.timelapse.backend.dto.RepositoryTreeDto;
 import com.timelapse.backend.dto.SyncResultDto;
 import com.timelapse.backend.entity.GitHubInstallationEntity;
 import com.timelapse.backend.entity.RepositoryEntity;
@@ -134,6 +135,14 @@ public class RepositoryService {
         RepositoryEntity repository = requireRepository(id);
         validateSha(sha);
         return gitMiningService.getCommitDetail(Path.of(repository.getLocalGitDirectory()), sha);
+    }
+
+    /** Returns the complete file/folder snapshot at the requested commit. */
+    public RepositoryTreeDto getRepositoryTree(String id, String sha) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        validateSha(sha);
+        return gitMiningService.getRepositoryTree(
+                Path.of(repository.getLocalGitDirectory()), sha);
     }
 
     /** Returns a file exactly as it existed at the requested commit. */
