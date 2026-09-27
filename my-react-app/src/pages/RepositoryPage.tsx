@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
 import { getCommit, getCommits, getFile, getTree } from "../api/commits";
 import RepositoryTree from "../components/RepositoryTree";
+import TimeLine from "../components/TimeLine";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileContent, RepositoryTree as Tree, RepositoryTreeNode } from "../types/git";
 
-const PLAY_INTERVAL_MS = 1200;
+const BASE_PLAY_INTERVAL_MS = 1200;
 
 export default function RepositoryPage() {
   const { repoKey } = useParams();
@@ -17,6 +18,7 @@ export default function RepositoryPage() {
   const [tree, setTree] = useState<Tree | null>(null);
   const [file, setFile] = useState<FileContent | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const [loadingFrame, setLoadingFrame] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,9 +84,9 @@ export default function RepositoryPage() {
         }
         return current + 1;
       });
-    }, PLAY_INTERVAL_MS);
+    }, BASE_PLAY_INTERVAL_MS / speed);
     return () => window.clearInterval(timer);
-  }, [playing, commits.length]);
+  }, [playing, commits.length, speed]);
 
   const openFile = async (node: RepositoryTreeNode) => {
     if (!repoKey || !selected || node.type === "DIRECTORY") return;
@@ -113,8 +115,6 @@ export default function RepositoryPage() {
     }
   };
 
-  const progress = useMemo(() => commits.length ? `${index + 1} / ${commits.length}` : "0 / 0", [index, commits.length]);
-
   return (
     <main className="page extraction-page">
       <section className="card extraction-card">
@@ -134,30 +134,17 @@ export default function RepositoryPage() {
             </div>
 
             <hr />
-            <h2>Commit timeline</h2>
-            {commits.length === 0 ? <p>No commits extracted.</p> : (
-              <>
-                <div className="toolbar">
-                  <button onClick={() => { setPlaying(false); setIndex((i) => Math.max(0, i - 1)); }} disabled={index === 0}>Previous</button>
-                  <button onClick={() => setPlaying((v) => !v)} disabled={commits.length < 2}>{playing ? "Pause" : "Play"}</button>
-                  <button onClick={() => { setPlaying(false); setIndex((i) => Math.min(commits.length - 1, i + 1)); }} disabled={index >= commits.length - 1}>Next</button>
-                  <span>{progress}</span>
-                </div>
-                <input
-                  className="timeline-range"
-                  type="range"
-                  min={0}
-                  max={Math.max(0, commits.length - 1)}
-                  value={index}
-                  onChange={(e) => { setPlaying(false); setIndex(Number(e.target.value)); }}
-                />
-                <select className="commit-select" value={index} onChange={(e) => { setPlaying(false); setIndex(Number(e.target.value)); }}>
-                  {commits.map((commit, i) => (
-                    <option key={commit.sha} value={i}>{i + 1}. {commit.sha.slice(0, 8)} - {commit.message}</option>
-                  ))}
-                </select>
-              </>
-            )}
+            <h2>Repository timelapse</h2>
+            <p className="muted">Replay the repository from its earliest extracted commit to the current state. Scrub to inspect any frame.</p>
+            <TimeLine
+              commits={commits}
+              currentIndex={index}
+              playing={playing}
+              speed={speed}
+              onIndexChange={setIndex}
+              onPlayingChange={setPlaying}
+              onSpeedChange={setSpeed}
+            />
 
             {selected && (
               <section className="extract-section">
@@ -191,7 +178,7 @@ export default function RepositoryPage() {
               <section className="extract-section">
                 <h2>Repository tree at commit</h2>
                 <p className="muted">Click a file to request its content at this exact SHA.</p>
-                {tree ? <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={file?.path} /> : <p>No tree loaded.</p>}
+                {tree ? <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={file?.path} changes={detail?.files ?? []} /> : <p>No tree loaded.</p>}
               </section>
 
               <section className="extract-section">
