@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { FileChange, RepositoryTreeNode } from "../types/git";
 
 type Props = {
@@ -30,12 +31,33 @@ function directoryHasChanges(path: string, changes: FileChange[]) {
   );
 }
 
+
+
 export default function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth = 0 }: Props) {
   const isDirectory = node.type === "DIRECTORY";
   const isRoot = depth === 0 && !node.name;
   const change = !isDirectory ? changeForPath(node.path, changes) : undefined;
   const directoryChanged = isDirectory && directoryHasChanges(node.path, changes);
   const changeClass = change ? `change-${change.changeType.toLowerCase()}` : "";
+
+  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(
+    () => new Set()
+  );
+  const collapsed = collapsedPaths.has(node.path);
+
+  function toggleFolder(path: string) {
+    setCollapsedPaths(previous => {
+      const next = new Set(previous);
+
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+
+      return next;
+    });
+  }
 
   return (
     <div>
@@ -45,7 +67,10 @@ export default function RepositoryTree({ node, onFileClick, selectedPath, change
           style={{ paddingLeft: `${depth * 18}px` }}
         >
           {isDirectory ? (
-            <span className="directory-label"><span aria-hidden="true">▾</span> {node.name}/</span>
+            <span className="directory-label" style={{ cursor: "pointer" }} onClick={() => toggleFolder(node.path)}>
+              <span aria-hidden="true">{collapsed? "▸" : "▾"}</span> {node.name}/
+              </span>
+
           ) : (
             <button
               type="button"
@@ -60,7 +85,7 @@ export default function RepositoryTree({ node, onFileClick, selectedPath, change
           )}
         </div>
       )}
-      {node.children?.map((child) => (
+      {!collapsed && node.children?.map((child) => (
         <RepositoryTree
           key={`${child.type}:${child.path}`}
           node={child}
