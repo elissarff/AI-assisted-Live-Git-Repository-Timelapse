@@ -36,3 +36,5 @@ build/
 data/repositories/
 
 .env
+*.pem
+.DS_Store

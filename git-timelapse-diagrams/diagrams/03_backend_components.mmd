@@ -1,0 +1,39 @@
+flowchart TB
+    subgraph Controllers
+      RC[RepositoryController]
+      GWC[GitHubWebhookController]
+      GCC[GitHubConnectionController]
+    end
+    subgraph Services
+      RS[RepositoryService]
+      GS[GitService / JGit]
+      GWS[GitHubWebhookService]
+      GAS[GitHubAppService]
+      GIS[GitHubInstallationService]
+      GTS[GitHubTokenService]
+      AS[LLM Analysis Service]
+      ES[Embedding Service]
+      MS[Metrics Service]
+    end
+    subgraph Persistence
+      RJR[RepositoryJpaRepository]
+      GIR[GitHubInstallationJpaRepository]
+      DB[(PostgreSQL + pgvector)]
+      BARE[(Bare Git Repositories)]
+    end
+
+    RC --> RS
+    GWC --> GWS --> RS
+    GCC --> GIS
+    RS --> GS
+    RS --> MS
+    RS --> AS
+    AS --> ES
+    GIS --> GAS
+    GAS --> GTS
+    GTS --> GS
+    GS <--> BARE
+    RS --> RJR --> DB
+    GIS --> GIR --> DB
+    AS --> DB
+    ES --> DB

@@ -1,0 +1,23 @@
+flowchart TD
+    A[User installs GitHub App] --> B[Select authorized repositories]
+    B --> C[Backend stores installation + repository metadata]
+    C --> D[Obtain short-lived installation token]
+    D --> E[JGit bare clone / fetch]
+    E --> F[Extract commits, files, diffs, authors, +/-]
+    F --> G[Build frontend-ready DTOs]
+    G --> H[Calculate evolution metrics]
+    H --> I[Generate LLM commit analysis]
+    I --> J[Generate/store embeddings in pgvector]
+    J --> K[REST API serves historical state]
+    K --> L[React renders timelapse/dashboard]
+    M[Developer pushes commit] --> N[GitHub sends signed webhook]
+    N --> O{Signature valid?}
+    O -- No --> P[Reject]
+    O -- Yes --> Q[Identify repository]
+    Q --> R[JGit fetch]
+    R --> S[Compare lastProcessedSha to new HEAD]
+    S --> T[Process only new commits]
+    T --> H
+    T --> U[Update lastProcessedSha]
+    U --> V[Publish WebSocket/SSE event]
+    V --> L

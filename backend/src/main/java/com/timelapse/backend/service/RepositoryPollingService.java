@@ -1,12 +1,13 @@
 package com.timelapse.backend.service;
 
-import com.timelapse.backend.entity.MonitoringType;
-import com.timelapse.backend.entity.RepositoryEntity;
-import com.timelapse.backend.repository.RepositoryJpaRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.repository.RepositoryJpaRepository;
+import com.timelapse.backend.types.MonitoringType;
 
 @Service
 public class RepositoryPollingService {

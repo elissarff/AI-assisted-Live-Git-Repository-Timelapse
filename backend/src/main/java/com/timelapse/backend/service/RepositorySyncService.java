@@ -1,16 +1,5 @@
 package com.timelapse.backend.service;
 
-import com.timelapse.backend.dto.CommitDto;
-import com.timelapse.backend.dto.SyncResultDto;
-import com.timelapse.backend.entity.MonitoringType;
-import com.timelapse.backend.entity.RepositoryEntity;
-import com.timelapse.backend.repository.RepositoryJpaRepository;
-import com.timelapse.backend.service.github.GitHubTokenService;
-import org.eclipse.jgit.transport.CredentialsProvider;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
@@ -19,20 +8,35 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.timelapse.backend.dto.CommitDto;
+import com.timelapse.backend.dto.SyncResultDto;
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.repository.RepositoryJpaRepository;
+import com.timelapse.backend.service.git.GitMiningService;
+import com.timelapse.backend.service.git.GitRepositoryService;
+import com.timelapse.backend.service.github.GitHubTokenService;
+import com.timelapse.backend.types.MonitoringType;
+
 @Service
 public class RepositorySyncService {
     private final RepositoryJpaRepository repositoryJpaRepository;
-    private final GitService gitService;
+    private final GitRepositoryService gitRepositoryService;
+    private final GitMiningService gitMiningService;
     private final GitHubTokenService gitHubTokenService;
     private final ConcurrentHashMap<Long, ReentrantLock> repositoryLocks = new ConcurrentHashMap<>();
 
     public RepositorySyncService(
             RepositoryJpaRepository repositoryJpaRepository,
-            GitService gitService,
+            GitRepositoryService gitRepositoryService,
+            GitMiningService gitMiningService,
             GitHubTokenService gitHubTokenService
     ) {
         this.repositoryJpaRepository = repositoryJpaRepository;
-        this.gitService = gitService;
+        this.gitRepositoryService = gitRepositoryService;
+        this.gitMiningService = gitMiningService;
         this.gitHubTokenService = gitHubTokenService;
     }
 
@@ -63,22 +67,22 @@ public class RepositorySyncService {
 
     @Transactional
     protected SyncResultDto doSync(RepositoryEntity repository) throws Exception {
-        CredentialsProvider credentials = credentialsFor(repository);
+        String token = tokenFor(repository);
         Path gitDirectory = Path.of(repository.getLocalGitDirectory());
         Files.createDirectories(gitDirectory.getParent());
 
-        if (!gitService.repositoryExists(gitDirectory)) {
-            gitService.cloneBare(repository.getRemoteUrl(), gitDirectory, credentials);
+        if (!gitRepositoryService.repositoryExists(gitDirectory)) {
+            gitRepositoryService.cloneBare(repository.getRemoteUrl(), gitDirectory, "x-access-token", token);
         } else {
-            gitService.fetch(gitDirectory, credentials);
+            gitRepositoryService.fetch(gitDirectory, "x-access-token", token);
         }
 
         if (repository.getDefaultBranch() == null || repository.getDefaultBranch().isBlank()) {
-            repository.setDefaultBranch(gitService.detectDefaultBranch(gitDirectory));
+            repository.setDefaultBranch(gitRepositoryService.detectDefaultBranch(gitDirectory));
         }
 
         String previousSha = repository.getLastProcessedSha();
-        String currentSha = gitService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
+        String currentSha = gitRepositoryService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
         if (currentSha == null) {
             throw new IllegalStateException("Unable to resolve branch '" + repository.getDefaultBranch() + "' for repository " + repository.getRepoKey());
         }
@@ -91,16 +95,9 @@ public class RepositorySyncService {
                     false, 0, 0, List.of(), syncedAt);
         }
 
-        List<CommitDto> commits;
-        if (previousSha == null) {
-            commits = gitService.getAllCommits(gitDirectory, currentSha);
-        } else if (!gitService.commitExists(gitDirectory, previousSha)
-                || !gitService.isAncestor(gitDirectory, previousSha, currentSha)) {
-            // Force-push/stale SHA: safely rebuild the reachable history instead of failing forever.
-            commits = gitService.getAllCommits(gitDirectory, currentSha);
-        } else {
-            commits = gitService.getCommitsBetween(gitDirectory, previousSha, currentSha);
-        }
+        // Mining owns the repository lifetime for the history check and traversal, so this sync
+        // operation does not repeatedly reopen the same repository or handle JGit objects here.
+        List<CommitDto> commits = gitMiningService.getCommitsForSync(gitDirectory, previousSha, currentSha);
 
         // This is the shared hook for commit persistence/AI processing when those services are added.
         repository.setLastProcessedSha(currentSha);
@@ -111,7 +108,7 @@ public class RepositorySyncService {
                 true, commits.size(), commits.size(), commits, syncedAt);
     }
 
-    private CredentialsProvider credentialsFor(RepositoryEntity repository) throws Exception {
+    private String tokenFor(RepositoryEntity repository) throws Exception {
         if (repository.getMonitoringType() != MonitoringType.GITHUB_APP) {
             return null;
         }
@@ -119,6 +116,6 @@ public class RepositorySyncService {
             throw new IllegalStateException("GitHub App repository is missing an installation association");
         }
         String token = gitHubTokenService.getInstallationToken(repository.getInstallation().getGithubInstallationId());
-        return new UsernamePasswordCredentialsProvider("x-access-token", token);
+        return token;
     }
 }

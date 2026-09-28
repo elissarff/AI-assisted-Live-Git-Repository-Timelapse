@@ -1,12 +1,14 @@
 package com.timelapse.backend.service.github;
 
-import com.timelapse.backend.entity.MonitoringType;
-import com.timelapse.backend.entity.RepositoryEntity;
-import com.timelapse.backend.service.RepositoryService;
-import com.timelapse.backend.service.RepositorySyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.service.RepositoryService;
+import com.timelapse.backend.service.RepositorySyncService;
+import com.timelapse.backend.types.MonitoringType;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 

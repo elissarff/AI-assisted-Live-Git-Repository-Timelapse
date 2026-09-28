@@ -1,0 +1,261 @@
+:root {
+  font-family: Inter, system-ui, Arial, sans-serif;
+  color: #1f2328;
+  background: #f6f8fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  cursor: pointer;
+  background: #1f2328;
+  color: white;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+a {
+  color: inherit;
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: start center;
+  padding: 4rem 1rem;
+}
+
+.card {
+  width: min(760px, 100%);
+  background: white;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  padding: 2rem;
+}
+
+.repo-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.repo-row {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #d8dee4;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.muted {
+  margin-top: 0.25rem;
+  color: #656d76;
+  font-size: 0.9rem;
+}
+
+.error {
+  color: #cf222e;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 0.7rem 1rem;
+}
+
+.details dt {
+  font-weight: 700;
+}
+
+.details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.extraction-card { width: min(1200px, 100%); }
+.toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: 1rem 0; }
+.toolbar code { overflow-wrap: anywhere; }
+.timeline-range { width: 100%; margin: .5rem 0 1rem; }
+.commit-select { width: 100%; padding: .65rem; font: inherit; }
+.extract-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.5fr); gap: 1rem; align-items: start; }
+.extract-section { margin-top: 1.25rem; border: 1px solid #d8dee4; border-radius: 8px; padding: 1rem; min-width: 0; }
+.tree-row { min-height: 28px; display: flex; align-items: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9rem; }
+.file-link { background: transparent; color: #0969da; padding: .2rem .35rem; border-radius: 4px; text-align: left; }
+.file-link:hover, .file-link.selected { background: #ddf4ff; }
+.file-link:disabled { color: #656d76; cursor: default; }
+.change-list { padding-left: 1.4rem; }
+.change-list li { margin: .35rem 0; overflow-wrap: anywhere; }
+.file-content { max-height: 620px; overflow: auto; padding: 1rem; background: #f6f8fa; border: 1px solid #d8dee4; border-radius: 6px; white-space: pre; font-size: .82rem; }
+@media (max-width: 800px) { .extract-grid { grid-template-columns: 1fr; } }
+
+/* Repository timelapse */
+.timelapse-player { margin: 1rem 0 1.5rem; padding: 1rem 1.1rem; border: 1px solid #d8dee4; border-radius: 12px; background: linear-gradient(180deg, #fff, #f6f8fa); }
+.timelapse-now { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+.timelapse-now > div { display: grid; gap: .2rem; min-width: 0; }
+.timelapse-now strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timelapse-kicker { color: #656d76; font-size: .7rem; font-weight: 800; letter-spacing: .08em; }
+.timelapse-count { font-variant-numeric: tabular-nums; color: #656d76; white-space: nowrap; }
+.timelapse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+.player-button { min-width: 42px; padding: .55rem .75rem; }
+.player-button.secondary { background: #fff; color: #1f2328; border: 1px solid #d0d7de; }
+.player-button.play { min-width: 82px; }
+.speed-controls { display: flex; gap: .25rem; margin-left: auto; padding-left: .75rem; border-left: 1px solid #d8dee4; }
+.speed-button { background: transparent; color: #656d76; padding: .45rem .55rem; font-size: .82rem; }
+.speed-button.active { background: #1f2328; color: #fff; }
+.timelapse-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .8rem; color: #656d76; font-size: .8rem; }
+
+.tree-row { position: relative; border-radius: 5px; transition: background-color .25s ease, transform .25s ease, opacity .25s ease; }
+.directory-label { color: #57606a; font-weight: 650; }
+.file-link { width: 100%; display: flex; align-items: center; gap: .35rem; }
+.file-icon { color: #8c959f; }
+.change-badge { margin-left: auto; padding: .12rem .38rem; border-radius: 999px; font-size: .62rem; font-weight: 800; letter-spacing: .03em; }
+.tree-row.directory-changed > .directory-label { color: #0969da; }
+.tree-row.change-add { background: #dafbe1; animation: repo-file-enter .5s ease both; }
+.tree-row.change-modify { background: #fff8c5; animation: repo-file-pulse .65s ease both; }
+.tree-row.change-rename, .tree-row.change-copy { background: #ddf4ff; animation: repo-file-enter .5s ease both; }
+.change-badge.change-add { background: #1a7f37; color: white; }
+.change-badge.change-modify { background: #9a6700; color: white; }
+.change-badge.change-rename, .change-badge.change-copy { background: #0969da; color: white; }
+
+@keyframes repo-file-enter { from { opacity: .25; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes repo-file-pulse { 0% { transform: scale(.99); } 45% { transform: scale(1.012); } 100% { transform: scale(1); } }
+
+
+.tree-row.change-delete { background: #ffebe9; animation: repo-file-delete .7s ease both; }
+.change-badge.change-delete { background: #cf222e; color: white; }
+.deleted-ghost { opacity: .78; }
+.deleted-file { width: 100%; display: flex; align-items: center; gap: .35rem; color: #82071e; text-decoration: line-through; cursor: default; }
+@keyframes repo-file-delete {
+  0% { opacity: 1; transform: translateX(0); }
+  45% { opacity: 1; transform: translateX(3px); }
+  100% { opacity: .78; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tree-row { transition: none; }
+  .tree-row.change-add, .tree-row.change-modify, .tree-row.change-rename, .tree-row.change-copy, .tree-row.change-delete { animation: none; }
+}
+
+/* Commit-aware file diff */
+.file-diff { border: 1px solid #d8dee4; border-radius: 6px; overflow: auto; max-height: 620px; background: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; }
+.diff-hunk + .diff-hunk { border-top: 1px solid #d8dee4; }
+.diff-hunk-header { padding: .38rem .65rem; background: #ddf4ff; color: #0550ae; white-space: pre; }
+.diff-line { min-width: max-content; display: grid; grid-template-columns: 3.25rem 3.25rem 1.5rem minmax(20rem, 1fr); line-height: 1.55; }
+.diff-line > code { padding-right: 1rem; white-space: pre; }
+.diff-line-no { padding: 0 .45rem; text-align: right; color: #57606a; border-right: 1px solid rgba(27,31,36,.08); user-select: none; }
+.diff-sign { text-align: center; user-select: none; }
+.diff-add { background: #dafbe1; }
+.diff-add .diff-sign { color: #1a7f37; font-weight: 800; }
+.diff-delete { background: #ffebe9; }
+.diff-delete .diff-sign { color: #cf222e; font-weight: 800; }
+.diff-meta { background: #f6f8fa; color: #57606a; }
+.full-file-details { margin-top: 1rem; }
+.full-file-details summary { cursor: pointer; font-weight: 600; margin-bottom: .5rem; }
+.deleted-file { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
+
+/* Full-file timelapse: source stays visible while this commit's edits are embedded in it. */
+.file-evolution { border: 1px solid #d0d7de; border-radius: 8px; overflow: hidden; background: #fff; }
+.file-evolution-legend { display: flex; gap: 18px; padding: 8px 12px; border-bottom: 1px solid #d0d7de; font-size: 12px; color: #57606a; }
+.file-evolution-legend b { display: inline-block; width: 18px; text-align: center; margin-right: 4px; border-radius: 3px; }
+.legend-add { background: #ccffd8; color: #116329; }
+.legend-delete { background: #ffd7d5; color: #82071e; }
+.file-evolution-code { overflow: auto; max-height: 70vh; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; line-height: 20px; }
+.evolution-line { display: grid; grid-template-columns: 52px 24px minmax(max-content, 1fr); min-height: 20px; white-space: pre; }
+.evolution-line code { padding: 0 12px 0 4px; font: inherit; }
+.evolution-line-no { text-align: right; padding-right: 10px; color: #8c959f; user-select: none; border-right: 1px solid rgba(27,31,36,.08); }
+.evolution-sign { text-align: center; user-select: none; }
+.evolution-add { background: #e6ffec; animation: evolutionAdd .45s ease-out; }
+.evolution-add .evolution-sign { background: #ccffd8; color: #116329; }
+.evolution-delete { background: #ffebe9; color: #82071e; animation: evolutionDelete .55s ease-out; }
+.evolution-delete .evolution-sign { background: #ffd7d5; }
+.evolution-delete code { text-decoration: line-through; text-decoration-color: rgba(130,7,30,.4); }
+@keyframes evolutionAdd { from { background: #9be9a8; transform: translateX(8px); opacity: .45; } to { background: #e6ffec; transform: translateX(0); opacity: 1; } }
+@keyframes evolutionDelete { from { background: #ff8182; opacity: 1; } to { background: #ffebe9; opacity: .78; } }
+
+/* The timelapse has one viewport: repository tree OR a persistent selected file. */
+.timelapse-viewport { min-height: 360px; }
+.file-view-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.back-to-tree { cursor: pointer; }
+.file-unavailable { padding: 28px 16px; text-align: center; border: 1px dashed currentColor; border-radius: 8px; opacity: .8; }
+
+/* Repository history is a workspace, so let it use the screen instead of the generic narrow card. */
+.extraction-page {
+  display: block;
+  padding: 1.25rem;
+}
+.extraction-card {
+  width: 100%;
+  max-width: none;
+  min-height: calc(100vh - 2.5rem);
+  padding: clamp(1rem, 2vw, 2rem);
+}
+.timelapse-viewport {
+  min-height: 55vh;
+  margin-top: 1rem;
+}
+.viewport-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.viewport-heading h2 { margin-top: 0; }
+
+/* Playback + compact commit context belong at the bottom of the workspace. */
+.timelapse-bottom {
+  margin-top: 1rem;
+  border: 1px solid #d8dee4;
+  border-radius: 10px;
+  background: #f6f8fa;
+  overflow: hidden;
+}
+.timelapse-bottom .timelapse-player {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.commit-bottom-details {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  padding: .75rem 1.1rem;
+  border-top: 1px solid #d8dee4;
+  color: #656d76;
+  font-size: .82rem;
+}
+.commit-bottom-message {
+  display: grid;
+  min-width: min(28rem, 100%);
+  margin-right: auto;
+  color: #1f2328;
+}
+.commit-bottom-message strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commit-stats b:first-child { color: #1a7f37; }
+.commit-stats b:last-child { color: #cf222e; }
+
+@media (max-width: 700px) {
+  .extraction-page { padding: .5rem; }
+  .extraction-card { min-height: calc(100vh - 1rem); padding: 1rem; }
+  .commit-bottom-message { min-width: 100%; }
+}

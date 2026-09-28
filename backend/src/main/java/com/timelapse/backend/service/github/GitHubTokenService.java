@@ -1,5 +1,11 @@
 package com.timelapse.backend.service.github;
 
+import com.timelapse.backend.config.GitProperties;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -11,14 +17,6 @@ import java.security.Signature;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-import com.timelapse.backend.config.GitProperties;
-
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class GitHubTokenService {
@@ -60,7 +58,7 @@ public class GitHubTokenService {
         return token;
     }
 
-    String createAppJwt() throws Exception {
+    public String createAppJwt() throws Exception {
         Instant now = Instant.now();
         String header = base64Url("{\"alg\":\"RS256\",\"typ\":\"JWT\"}");
         String payload = base64Url("{\"iat\":" + now.minusSeconds(30).getEpochSecond()

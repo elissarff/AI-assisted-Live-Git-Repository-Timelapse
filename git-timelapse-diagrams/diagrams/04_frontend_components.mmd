@@ -1,0 +1,21 @@
+flowchart TB
+    APP[React App]
+    APP --> SELECT[Repository Selector]
+    APP --> STATUS[Analysis / Live Status]
+    APP --> PLAYER[Timelapse Player]
+    APP --> DETAILS[Commit Detail View]
+    APP --> FILTERS[Filters Panel]
+    APP --> METRICS[Metrics Dashboard]
+    APP --> SEARCH[Semantic Evolution Search]
+    APP --> EVOLUTION[File / Component Evolution]
+
+    PLAYER --> SCRUB[Timeline Scrubber]
+    PLAYER --> CONTROLS[Play Pause Prev Next Speed]
+    DETAILS --> FILES[Changed Files + Additions/Deletions]
+    DETAILS --> AIS[AI Summary / Purpose / Category]
+    METRICS --> CHURN[Code Churn / Activity]
+    METRICS --> HOT[Hotspots / Frequent Files]
+    SEARCH --> RESULTS[Chronological Search Results]
+
+    API[REST API Client] --> APP
+    LIVE[WebSocket / SSE Client] --> APP

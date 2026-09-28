@@ -1,39 +1,45 @@
 package com.timelapse.backend.service;
 
-import com.timelapse.backend.config.GitProperties;
-import com.timelapse.backend.dto.CloneRepositoryRequest;
-import com.timelapse.backend.dto.CommitDto;
-import com.timelapse.backend.dto.RegisteredRepositoryDto;
-import com.timelapse.backend.dto.RepositoryInfoDto;
-import com.timelapse.backend.dto.SyncResultDto;
-import com.timelapse.backend.entity.GitHubInstallationEntity;
-import com.timelapse.backend.entity.MonitoringType;
-import com.timelapse.backend.entity.RepositoryEntity;
-import com.timelapse.backend.entity.RepositoryVisibility;
-import com.timelapse.backend.repository.RepositoryJpaRepository;
-import com.timelapse.backend.service.github.GitHubInstallationService;
-import org.springframework.stereotype.Service;
-
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+
+import com.timelapse.backend.config.GitProperties;
+import com.timelapse.backend.dto.CloneRepositoryRequest;
+import com.timelapse.backend.dto.CommitDto;
+import com.timelapse.backend.dto.CommitDetailDto;
+import com.timelapse.backend.dto.FileContentDto;
+import com.timelapse.backend.dto.RegisteredRepositoryDto;
+import com.timelapse.backend.dto.RepositoryInfoDto;
+import com.timelapse.backend.dto.RepositoryTreeDto;
+import com.timelapse.backend.dto.SyncResultDto;
+import com.timelapse.backend.entity.GitHubInstallationEntity;
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.repository.RepositoryJpaRepository;
+import com.timelapse.backend.service.git.GitMiningService;
+import com.timelapse.backend.service.github.GitHubInstallationService;
+import com.timelapse.backend.types.MonitoringType;
+import com.timelapse.backend.types.RepositoryVisibility;
 
 @Service
 public class RepositoryService {
     private final RepositoryJpaRepository repositoryJpaRepository;
-    private final GitService gitService;
+    private final GitMiningService gitMiningService;
     private final GitProperties properties;
     private final RepositorySyncService repositorySyncService;
     private final GitHubInstallationService gitHubInstallationService;
 
-    public RepositoryService(GitService gitService,
+    public RepositoryService(GitMiningService gitMiningService,
                              GitProperties properties,
                              RepositoryJpaRepository repositoryJpaRepository,
                              RepositorySyncService repositorySyncService,
                              GitHubInstallationService gitHubInstallationService) {
-        this.gitService = gitService;
+        this.gitMiningService = gitMiningService;
         this.properties = properties;
         this.repositoryJpaRepository = repositoryJpaRepository;
         this.repositorySyncService = repositorySyncService;
@@ -42,8 +48,12 @@ public class RepositoryService {
 
     public RegisteredRepositoryDto register(CloneRepositoryRequest request) throws Exception {
         String remoteUrl = normalizeAndValidateRemoteUrl(request.remoteUrl());
-        if (repositoryJpaRepository.existsByRemoteUrl(remoteUrl)) {
-            throw new IllegalArgumentException("Repository already registered: " + remoteUrl);
+        Optional<RepositoryEntity> existing =
+        repositoryJpaRepository.findByRemoteUrl(request.remoteUrl());
+
+        // TEMPORARY
+        if (existing.isPresent()) {
+            return toRegisteredDto(existing.get(), existing.get().getLastProcessedSha());
         }
 
         MonitoringType monitoringType = request.monitoringType() == null ? MonitoringType.POLLING : request.monitoringType();
@@ -96,15 +106,68 @@ public class RepositoryService {
     public RepositoryInfoDto inspect(String id) throws Exception {
         RepositoryEntity repository = requireRepository(id);
         Path gitDirectory = Path.of(repository.getLocalGitDirectory());
-        String headSha = gitService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
-        List<CommitDto> recentCommits = gitService.getRecentCommits(gitDirectory, repository.getDefaultBranch(), 10);
-        int commitCount = gitService.countCommits(gitDirectory, repository.getDefaultBranch());
+        String headSha = gitMiningService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
+        List<CommitDto> recentCommits = gitMiningService.getRecentCommits(gitDirectory, repository.getDefaultBranch(), 10);
+        int commitCount = gitMiningService.countCommits(gitDirectory, repository.getDefaultBranch());
         return new RepositoryInfoDto(repository.getRepoKey().toString(), repository.getName(),
                 repository.getRemoteUrl(), repository.getDefaultBranch(), headSha, commitCount, recentCommits);
     }
 
     public SyncResultDto sync(String id) throws Exception {
         return repositorySyncService.sync(id);
+    }
+
+    /**
+     * Returns the complete tracked/default-branch history in chronological
+     * order. Git remains authoritative; commit history is not duplicated in
+     * PostgreSQL.
+     */
+    public List<CommitDto> getTimeline(String id) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        Path gitDirectory = Path.of(repository.getLocalGitDirectory());
+        String headSha = gitMiningService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
+        if (headSha == null) return List.of();
+        return gitMiningService.getAllCommits(gitDirectory, headSha);
+    }
+
+    /** Returns the Git-derived details required by the commit detail view. */
+    public CommitDetailDto getCommitDetail(String id, String sha) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        validateSha(sha);
+        return gitMiningService.getCommitDetail(Path.of(repository.getLocalGitDirectory()), sha);
+    }
+
+    /** Returns the complete file/folder snapshot at the requested commit. */
+    public RepositoryTreeDto getRepositoryTree(String id, String sha) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        validateSha(sha);
+        return gitMiningService.getRepositoryTree(
+                Path.of(repository.getLocalGitDirectory()), sha);
+    }
+
+    /** Returns a file exactly as it existed at the requested commit. */
+    public FileContentDto getFileContent(String id, String sha, String filePath) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        validateSha(sha);
+        if (filePath == null || filePath.isBlank()) {
+            throw new IllegalArgumentException("path is required");
+        }
+        if (filePath.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("Invalid file path");
+        }
+        return gitMiningService.getFileContent(
+                Path.of(repository.getLocalGitDirectory()), sha, filePath);
+    }
+
+    private void validateSha(String sha) {
+        if (sha == null || sha.isBlank()) {
+            throw new IllegalArgumentException("Commit SHA is required");
+        }
+        // Accept abbreviated Git object ids while rejecting revision expressions
+        // such as HEAD~1. The timelapse should address concrete commits only.
+        if (!sha.matches("[0-9a-fA-F]{4,64}")) {
+            throw new IllegalArgumentException("Invalid commit SHA: " + sha);
+        }
     }
 
     public RepositoryEntity requireRepository(String id) {

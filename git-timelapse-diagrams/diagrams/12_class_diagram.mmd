@@ -1,0 +1,41 @@
+classDiagram
+    class RepositoryController
+    class GitHubWebhookController
+    class GitHubConnectionController
+    class RepositoryService {
+      +openRepository()
+      +sync()
+      +getTimeline()
+      +getCommit()
+    }
+    class GitService {
+      +cloneBare()
+      +fetch()
+      +getCommitsBetween()
+      +getDiff()
+    }
+    class GitHubWebhookService {
+      +verifySignature()
+      +handlePush()
+    }
+    class GitHubTokenService {
+      +createAppJwt()
+      +getInstallationToken()
+    }
+    class LLMAnalysisService {
+      +analyzeCommit()
+      +summarizePeriod()
+    }
+    class EmbeddingService {
+      +embedCommit()
+      +semanticSearch()
+    }
+
+    RepositoryController --> RepositoryService
+    GitHubWebhookController --> GitHubWebhookService
+    GitHubConnectionController --> GitHubTokenService
+    GitHubWebhookService --> RepositoryService
+    RepositoryService --> GitService
+    RepositoryService --> LLMAnalysisService
+    LLMAnalysisService --> EmbeddingService
+    GitService ..> GitHubTokenService

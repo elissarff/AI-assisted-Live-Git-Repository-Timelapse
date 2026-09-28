@@ -1,0 +1,9 @@
+flowchart TB
+    B[Browser / React SPA] -->|HTTPS| RP[Reverse Proxy]
+    RP --> API[Spring Boot Backend]
+    API --> DB[(PostgreSQL + pgvector)]
+    API --> GIT[(Local Bare Git Repositories)]
+    API -->|REST| LLM[LLM / Embedding Provider]
+    API -->|GitHub REST API| GH[GitHub]
+    GH -->|Signed Webhook| API
+    API -->|WebSocket / SSE| B

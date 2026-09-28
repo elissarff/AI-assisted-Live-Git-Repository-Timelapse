@@ -1,0 +1,28 @@
+sequenceDiagram
+    actor Dev as Developer
+    participant GH as GitHub
+    participant WH as Spring Webhook
+    participant RS as RepositoryService
+    participant GT as GitHubTokenService
+    participant JG as JGit
+    participant AI as LLM/Embedding
+    participant DB as PostgreSQL
+    participant FE as React
+
+    Dev->>GH: git push
+    GH->>WH: signed push webhook
+    WH->>WH: verify signature
+    WH->>RS: synchronize(repository)
+    RS->>GT: get installation token
+    GT-->>RS: short-lived token
+    RS->>JG: fetch(credentials)
+    JG-->>RS: updated Git objects
+    RS->>RS: commits between old SHA and new HEAD
+    loop each new commit
+        RS->>AI: commit metadata + selected diff
+        AI-->>RS: summary/category/components/significance
+        RS->>DB: cache analysis + embeddings
+    end
+    RS->>DB: update lastProcessedSha
+    RS-->>FE: WebSocket/SSE update
+    FE->>FE: append commit to timelapse

@@ -1,0 +1,10 @@
+flowchart LR
+    Q[Natural-language query<br/>How did authentication evolve?]
+    Q --> QE[Generate query embedding]
+    QE --> PG[(pgvector similarity search)]
+    PG --> R[Relevant commit/file-change records]
+    R --> G[Retrieve authoritative Git evidence]
+    G --> L[LLM synthesis]
+    L --> O[Chronological evolution explanation]
+    O --> UI[React search-results timeline]
+    UI --> J[Jump to matching commit]

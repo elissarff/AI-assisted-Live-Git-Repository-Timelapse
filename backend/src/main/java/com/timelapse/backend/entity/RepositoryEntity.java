@@ -3,6 +3,9 @@ package com.timelapse.backend.entity;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import com.timelapse.backend.types.MonitoringType;
+import com.timelapse.backend.types.RepositoryVisibility;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,12 +25,11 @@ import jakarta.persistence.Table;
 @Table(
         name = "repositories",
         indexes = {
-            @Index(name = "idx_repositories_remote_url", columnList = "remote_url"),
-            @Index(name = "idx_repositories_provider_repository_id", columnList = "provider_repository_id"),
-            @Index(name = "idx_repositories_monitoring_type", columnList = "monitoring_type")
+                @Index(name = "idx_repositories_remote_url", columnList = "remote_url"),
+                @Index(name = "idx_repositories_provider_repository_id", columnList = "provider_repository_id"),
+                @Index(name = "idx_repositories_monitoring_type", columnList = "monitoring_type")
         }
 )
-
 public class RepositoryEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
