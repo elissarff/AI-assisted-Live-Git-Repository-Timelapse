@@ -191,51 +191,45 @@ export default function RepositoryPage() {
             </div>
 
             <hr />
-            <h2>Repository timelapse</h2>
-            <p className="muted">Replay the repository from its earliest extracted commit to the current state. Scrub to inspect any frame.</p>
-            <TimeLine
-              commits={commits}
-              currentIndex={index}
-              playing={playing}
-              speed={speed}
-              onIndexChange={setIndex}
-              onPlayingChange={setPlaying}
-              onSpeedChange={setSpeed}
-            />
+            <section className="timelapse-bottom">
+              <TimeLine
+                commits={commits}
+                currentIndex={index}
+                playing={playing}
+                speed={speed}
+                onIndexChange={setIndex}
+                onPlayingChange={setPlaying}
+                onSpeedChange={setSpeed}
+              />
 
-            {selected && (
-              <section className="extract-section">
-                <h2>Selected commit</h2>
-                <p><code>{selected.sha}</code></p>
-                <p><strong>{selected.message}</strong></p>
-                <p>{selected.author} - {new Date(selected.timestamp).toLocaleString()}</p>
-                {loadingFrame && <p>Extracting commit + tree...</p>}
-
-                {detail && (
-                  <>
-                    <p>Files changed: {detail.filesChanged} | +{detail.additions} / -{detail.deletions}</p>
-                    <h3>Changes</h3>
-                    {detail.files.length === 0 ? <p>No file changes.</p> : (
-                      <ul className="change-list">
-                        {detail.files.map((change, i) => (
-                          <li key={`${change.oldPath}-${change.newPath}-${i}`}>
-                            <strong>{change.changeType}</strong>{" "}
-                            <code>{change.changeType === "RENAME" ? `${change.oldPath} -> ${change.newPath}` : (change.newPath || change.oldPath)}</code>{" "}
-                            (+{change.additions}/-{change.deletions}){change.binary ? " [binary]" : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </section>
-            )}
+              {selected && (
+                <div className="commit-bottom-details">
+                  <div className="commit-bottom-message">
+                    <span className="timelapse-kicker">COMMIT</span>
+                    <strong>{selected.message}</strong>
+                  </div>
+                  <code title={selected.sha}>{selected.sha.slice(0, 12)}</code>
+                  <span>{selected.author}</span>
+                  <span>{new Date(selected.timestamp).toLocaleString()}</span>
+                  {detail && (
+                    <span className="commit-stats">
+                      {detail.filesChanged} files · <b>+{detail.additions}</b> / <b>-{detail.deletions}</b>
+                    </span>
+                  )}
+                </div>
+              )}
+            </section>
 
             <section className="extract-section timelapse-viewport">
               {!selectedPath ? (
                 <>
-                  <h2>Repository tree at commit</h2>
-                  <p className="muted">Choose a file to follow it while the timeline continues through commits.</p>
+                  <div className="viewport-heading">
+                    <div>
+                      <h2>Repository tree</h2>
+                      <p className="muted">Choose a file to follow it while the timeline continues through commits.</p>
+                    </div>
+                    {loadingFrame && <span className="muted">Loading commit…</span>}
+                  </div>
                   {tree ? (
                     <RepositoryTree
                       node={tree.root}
@@ -279,6 +273,8 @@ export default function RepositoryPage() {
                 </>
               )}
             </section>
+
+            
           </>
         )}
       </section>

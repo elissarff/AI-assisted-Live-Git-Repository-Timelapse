@@ -83,13 +83,6 @@ export default function TimeLine({
         </div>
       </div>
 
-      {selected && (
-        <div className="timelapse-meta">
-          <code>{selected.sha.slice(0, 8)}</code>
-          <span>{selected.author}</span>
-          <span>{new Date(selected.timestamp).toLocaleString()}</span>
-        </div>
-      )}
     </section>
   );
 }

@@ -192,3 +192,70 @@ a {
 .file-view-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .back-to-tree { cursor: pointer; }
 .file-unavailable { padding: 28px 16px; text-align: center; border: 1px dashed currentColor; border-radius: 8px; opacity: .8; }
+
+/* Repository history is a workspace, so let it use the screen instead of the generic narrow card. */
+.extraction-page {
+  display: block;
+  padding: 1.25rem;
+}
+.extraction-card {
+  width: 100%;
+  max-width: none;
+  min-height: calc(100vh - 2.5rem);
+  padding: clamp(1rem, 2vw, 2rem);
+}
+.timelapse-viewport {
+  min-height: 55vh;
+  margin-top: 1rem;
+}
+.viewport-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.viewport-heading h2 { margin-top: 0; }
+
+/* Playback + compact commit context belong at the bottom of the workspace. */
+.timelapse-bottom {
+  margin-top: 1rem;
+  border: 1px solid #d8dee4;
+  border-radius: 10px;
+  background: #f6f8fa;
+  overflow: hidden;
+}
+.timelapse-bottom .timelapse-player {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.commit-bottom-details {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  padding: .75rem 1.1rem;
+  border-top: 1px solid #d8dee4;
+  color: #656d76;
+  font-size: .82rem;
+}
+.commit-bottom-message {
+  display: grid;
+  min-width: min(28rem, 100%);
+  margin-right: auto;
+  color: #1f2328;
+}
+.commit-bottom-message strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.commit-stats b:first-child { color: #1a7f37; }
+.commit-stats b:last-child { color: #cf222e; }
+
+@media (max-width: 700px) {
+  .extraction-page { padding: .5rem; }
+  .extraction-card { min-height: calc(100vh - 1rem); padding: 1rem; }
+  .commit-bottom-message { min-width: 100%; }
+}
