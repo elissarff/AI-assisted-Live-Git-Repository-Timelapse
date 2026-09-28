@@ -1,9 +1,16 @@
 import type { DiffHunk, DiffLine, FileChange } from "../types/git";
 
 type Props = {
-  change: FileChange;
+  /** Optional commit change. Omit it for a plain/unchanged file view. */
+  change?: FileChange | null;
+  /** Plain file content. Useful when there is no diff/evolution to build. */
+  content?: string | null;
+  /** Parent blob; only needed when rendering deletions/evolution. */
   beforeContent?: string | null;
+  /** Current blob; only needed when rendering additions/evolution. */
   afterContent?: string | null;
+  /** Binary can be supplied even when there is no FileChange. */
+  binary?: boolean;
 };
 
 type Mark = "add" | "delete" | "context";
@@ -57,19 +64,14 @@ function buildEvolution(change: FileChange, beforeContent?: string | null, after
 
   for (const hunk of change.hunks ?? []) {
     const parsed = parsedHunk(hunk);
-    for (const line of parsed) {
+    for (const [lineIndex, line] of parsed.entries()) {
       if (line.kind === "add" && line.newNo) added.add(line.newNo);
       if (line.kind === "delete" && line.oldNo) {
-        // newNo is absent on a deletion. The number of current-side lines seen
-        // before it determines the insertion point in the post-commit file.
-        const insertion = (() => {
-          let nextNew = hunk.newStart ?? 1;
-          for (const p of parsed) {
-            if (p === line) break;
-            if (p.kind !== "delete") nextNew = (p.newNo ?? nextNew) + 1;
-          }
-          return nextNew;
-        })();
+        // Count current-side lines before this deletion using its stable index.
+        let insertion = hunk.newStart ?? 1;
+        for (const p of parsed.slice(0, lineIndex)) {
+          if (p.kind !== "delete") insertion = (p.newNo ?? insertion) + 1;
+        }
         const bucket = deletionsBefore.get(insertion) ?? [];
         bucket.push({ kind: "delete", text: before[line.oldNo - 1] ?? "", oldNo: line.oldNo });
         deletionsBefore.set(insertion, bucket);
@@ -94,16 +96,28 @@ function buildEvolution(change: FileChange, beforeContent?: string | null, after
   return rows;
 }
 
-export default function FileDiff({ change, beforeContent, afterContent }: Props) {
-  if (change.binary) return <p>Binary content is not displayed.</p>;
-  const rows = buildEvolution(change, beforeContent, afterContent);
+export default function FileDiff({ change, content, beforeContent, afterContent, binary }: Props) {
+  const isBinary = binary ?? change?.binary ?? false;
+  if (isBinary) return <p>Binary content is not displayed.</p>;
 
+  // Evolution is an enhancement, not a requirement. If there is no change
+  // metadata, this component is simply the canonical raw-file renderer.
+  const hasEvolution = Boolean(change && (change.hunks?.length || change.changeType === "DELETE"));
+  const rawContent = content ?? afterContent ?? beforeContent ?? "";
+  const rows = hasEvolution && change
+    ? buildEvolution(change, beforeContent, afterContent ?? content)
+    : lines(rawContent).map((text, i) => ({ kind: "context" as const, text, newNo: i + 1 }));
+
+  // split("") represents an empty file as one empty line. Keep that useful
+  // visual row without pretending there was an addition/deletion.
   return (
-    <div className="file-evolution" role="table" aria-label="Full file with commit changes">
-      <div className="file-evolution-legend">
-        <span><b className="legend-add">+</b> added this commit</span>
-        <span><b className="legend-delete">−</b> removed this commit</span>
-      </div>
+    <div className="file-evolution" role="table" aria-label={hasEvolution ? "Full file with commit changes" : "File content"}>
+      {hasEvolution && (
+        <div className="file-evolution-legend">
+          <span><b className="legend-add">+</b> added this commit</span>
+          <span><b className="legend-delete">−</b> removed this commit</span>
+        </div>
+      )}
       <div className="file-evolution-code">
         {rows.map((row, index) => (
           <div className={`evolution-line evolution-${row.kind}`} key={`${row.kind}:${row.oldNo ?? ""}:${row.newNo ?? ""}:${index}`} role="row">

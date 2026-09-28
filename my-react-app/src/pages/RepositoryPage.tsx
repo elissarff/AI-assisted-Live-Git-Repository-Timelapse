@@ -24,12 +24,12 @@ export default function RepositoryPage() {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [loadingFrame, setLoadingFrame] = useState(false);
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [fileUnavailable, setFileUnavailable] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selected = commits[index] ?? null;
-  console.log(selectedChange);
-  
 
   const loadHistory = useCallback(async (repositoryId: string, preferSha?: string) => {
     const history = await getCommits(repositoryId);
@@ -61,18 +61,10 @@ export default function RepositoryPage() {
     if (!repoKey || !selected) {
       setDetail(null);
       setTree(null);
-      setFile(null);
-      setBeforeFile(null);
-      setSelectedPath(null);
-      setSelectedChange(null);
       return;
     }
     let cancelled = false;
     setLoadingFrame(true);
-    setFile(null);
-    setBeforeFile(null);
-    setSelectedPath(null);
-    setSelectedChange(null);
     setError(null);
     Promise.all([getCommit(repoKey, selected.sha), getTree(repoKey, selected.sha)])
       .then(([commitDetail, repositoryTree]) => {
@@ -100,40 +92,68 @@ export default function RepositoryPage() {
     return () => window.clearInterval(timer);
   }, [playing, commits.length, speed]);
 
-  const openFile = async (node: RepositoryTreeNode, explicitChange?: FileChange) => {
-    if (!repoKey || !selected || node.type === "DIRECTORY") return;
-    const change = explicitChange ?? detail?.files.find(
-      (item) => item.newPath === node.path || item.oldPath === node.path,
+  // File selection is intentionally independent from the timeline. Advancing
+  // commits changes the version being displayed, not which file the user chose.
+  const openFile = (node: RepositoryTreeNode, explicitChange?: FileChange) => {
+    if (node.type === "DIRECTORY") return;
+    setSelectedPath(node.path);
+    setSelectedChange(explicitChange ?? null);
+  };
+
+  const backToTree = () => {
+    setSelectedPath(null);
+    setSelectedChange(null);
+    setFile(null);
+    setBeforeFile(null);
+    setFileUnavailable(false);
+  };
+
+  useEffect(() => {
+    if (!repoKey || !selected || !selectedPath || !detail) return;
+
+    let cancelled = false;
+    const change = detail.files.find(
+      (item) => item.newPath === selectedPath || item.oldPath === selectedPath,
     ) ?? null;
 
-    setSelectedPath(node.path);
+    // Follow a rename while preserving the user's logical file selection.
+    const effectivePath = change?.changeType === "RENAME" && change.oldPath === selectedPath && change.newPath
+      ? change.newPath
+      : selectedPath;
+
+    if (effectivePath !== selectedPath) {
+      setSelectedPath(effectivePath);
+      return;
+    }
+
     setSelectedChange(change);
     setFile(null);
     setBeforeFile(null);
-    setError(null);
+    setFileUnavailable(false);
+    setLoadingFile(true);
 
-    try {
-      const parentSha = detail?.parentShas?.[0];
-      const afterPath = change?.newPath ?? node.path;
-      const beforePath = change?.oldPath ?? node.path;
+    const parentSha = detail.parentShas?.[0];
+    const afterPath = change?.newPath ?? effectivePath;
+    const beforePath = change?.oldPath ?? effectivePath;
 
-      // Load both real Git blobs. Added lines come from the selected commit;
-      // deleted lines come from its first parent.
-      const [after, before] = await Promise.all([
-        change?.changeType === "DELETE"
-          ? Promise.resolve(null)
-          : getFile(repoKey, selected.sha, afterPath),
-        !parentSha || change?.changeType === "ADD"
-          ? Promise.resolve(null)
-          : getFile(repoKey, parentSha, beforePath),
-      ]);
-
+    Promise.all([
+      change?.changeType === "DELETE"
+        ? Promise.resolve(null)
+        : getFile(repoKey, selected.sha, afterPath).catch(() => null),
+      !parentSha || change?.changeType === "ADD"
+        ? Promise.resolve(null)
+        : getFile(repoKey, parentSha, beforePath).catch(() => null),
+    ]).then(([after, before]) => {
+      if (cancelled) return;
       setFile(after);
       setBeforeFile(before);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load file versions.");
-    }
-  };
+      setFileUnavailable(!after && !before && change?.changeType !== "DELETE");
+    }).finally(() => {
+      if (!cancelled) setLoadingFile(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [repoKey, selected?.sha, selectedPath, detail]);
 
   const sync = async () => {
     if (!repoKey) return;
@@ -211,40 +231,54 @@ export default function RepositoryPage() {
               </section>
             )}
 
-            <div className="extract-grid">
-              <section className="extract-section">
-                <h2>Repository tree at commit</h2>
-                <p className="muted">Click a file to request its content at this exact SHA.</p>
-                {tree ? <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.files ?? []} /> : <p>No tree loaded.</p>}
-              </section>
+            <section className="extract-section timelapse-viewport">
+              {!selectedPath ? (
+                <>
+                  <h2>Repository tree at commit</h2>
+                  <p className="muted">Choose a file to follow it while the timeline continues through commits.</p>
+                  {tree ? (
+                    <RepositoryTree
+                      node={tree.root}
+                      onFileClick={openFile}
+                      changes={detail?.files ?? []}
+                    />
+                  ) : <p>No tree loaded.</p>}
+                </>
+              ) : (
+                <>
+                  <div className="file-view-header">
+                    <button type="button" className="back-to-tree" onClick={backToTree}>← Repository tree</button>
+                    <code>{selectedPath}</code>
+                  </div>
 
-              <section className="extract-section">
-                <h2>{selectedChange ? "File evolution at commit" : "File at commit"}</h2>
-                {!selectedPath ? <p>Select a file from the tree.</p> : (
-                  <>
-                    <p><code>{selectedPath}</code></p>
-                    {selectedChange ? (
-                      <>
-                        <p className="muted">
-                          <strong>{selectedChange.changeType}</strong> · +{selectedChange.additions} / -{selectedChange.deletions}
-                          {selectedChange.changeType === "RENAME" && selectedChange.oldPath ? ` · from ${selectedChange.oldPath}` : ""}
-                        </p>
-                        <FileDiff
-                          change={selectedChange}
-                          beforeContent={beforeFile?.content}
-                          afterContent={file?.content}
-                        />
-                      </>
-                    ) : file ? (
-                      <>
-                        <p className="muted">{file.size} bytes | {file.binary ? "binary" : "text"} | {file.commitSha.slice(0, 12)}</p>
-                        {file.binary ? <p>Binary content is not displayed.</p> : <pre className="file-content">{file.content ?? ""}</pre>}
-                      </>
-                    ) : <p>Loading file...</p>}
-                  </>
-                )}
-              </section>
-            </div>
+                  {loadingFile ? <p>Loading this file at the selected commit...</p> : selectedChange ? (
+                    <>
+                      <p className="muted">
+                        <strong>{selectedChange.changeType}</strong> · +{selectedChange.additions} / -{selectedChange.deletions}
+                        {selectedChange.changeType === "RENAME" && selectedChange.oldPath ? ` · from ${selectedChange.oldPath}` : ""}
+                      </p>
+                      <FileDiff
+                        change={selectedChange}
+                        beforeContent={beforeFile?.content}
+                        afterContent={file?.content}
+                      />
+                    </>
+                  ) : file ? (
+                    <>
+                      <p className="muted">Unchanged in this commit · {file.size} bytes · {file.commitSha.slice(0, 12)}</p>
+                      <FileDiff content={file.content} binary={file.binary} />
+                    </>
+                  ) : fileUnavailable ? (
+                    <div className="file-unavailable">
+                      <h3>File does not exist at this point in history</h3>
+                      <p className="muted">The timeline can keep playing. This file view will populate when the path exists in a later commit.</p>
+                    </div>
+                  ) : (
+                    <p>No file content at this commit.</p>
+                  )}
+                </>
+              )}
+            </section>
           </>
         )}
       </section>

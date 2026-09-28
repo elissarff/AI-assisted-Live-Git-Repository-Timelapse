@@ -186,3 +186,9 @@ a {
 .evolution-delete code { text-decoration: line-through; text-decoration-color: rgba(130,7,30,.4); }
 @keyframes evolutionAdd { from { background: #9be9a8; transform: translateX(8px); opacity: .45; } to { background: #e6ffec; transform: translateX(0); opacity: 1; } }
 @keyframes evolutionDelete { from { background: #ff8182; opacity: 1; } to { background: #ffebe9; opacity: .78; } }
+
+/* The timelapse has one viewport: repository tree OR a persistent selected file. */
+.timelapse-viewport { min-height: 360px; }
+.file-view-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.back-to-tree { cursor: pointer; }
+.file-unavailable { padding: 28px 16px; text-align: center; border: 1px dashed currentColor; border-radius: 8px; opacity: .8; }
