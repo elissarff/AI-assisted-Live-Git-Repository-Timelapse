@@ -2,7 +2,7 @@ import type { FileChange, RepositoryTreeNode } from "../types/git";
 
 type Props = {
   node: RepositoryTreeNode;
-  onFileClick: (node: RepositoryTreeNode) => void;
+  onFileClick: (node: RepositoryTreeNode, change?: FileChange) => void;
   selectedPath?: string;
   changes?: FileChange[];
   depth?: number;
@@ -50,7 +50,7 @@ export default function RepositoryTree({ node, onFileClick, selectedPath, change
             <button
               type="button"
               className={`file-link ${selectedPath === node.path ? "selected" : ""}`}
-              onClick={() => onFileClick(node)}
+              onClick={() => onFileClick(node, change)}
               disabled={node.type === "SUBMODULE"}
               title={node.path}
             >
@@ -81,10 +81,14 @@ export default function RepositoryTree({ node, onFileClick, selectedPath, change
             style={{ paddingLeft: `${ghostDepth * 18}px` }}
             title={`${path} was deleted in this commit`}
           >
-            <span className="file-link deleted-file" aria-disabled="true">
+            <button
+              type="button"
+              className={`file-link deleted-file ${selectedPath === path ? "selected" : ""}`}
+              onClick={() => onFileClick({ name, path, type: "FILE", children: [] }, change)}
+            >
               <span className="file-icon" aria-hidden="true">×</span> {name}
               <span className="change-badge change-delete">DELETE</span>
-            </span>
+            </button>
           </div>
         );
       })}

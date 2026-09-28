@@ -7,6 +7,26 @@ export type Commit = {
 
 export type FileChangeType = "ADD" | "MODIFY" | "DELETE" | "RENAME" | "COPY";
 
+export type DiffLine = {
+  type?: string;
+  content?: string;
+  oldLineNumber?: number | null;
+  newLineNumber?: number | null;
+  oldLine?: number | null;
+  newLine?: number | null;
+  line?: string;
+};
+
+export type DiffHunk = {
+  header?: string;
+  oldStart?: number;
+  oldLines?: number;
+  newStart?: number;
+  newLines?: number;
+  lines?: Array<DiffLine | string>;
+  content?: string;
+};
+
 export type FileChange = {
   oldPath: string | null;
   newPath: string | null;
@@ -14,7 +34,7 @@ export type FileChange = {
   additions: number;
   deletions: number;
   binary: boolean;
-  hunks: unknown[];
+  hunks: DiffHunk[];
 };
 
 export type CommitDetail = {
