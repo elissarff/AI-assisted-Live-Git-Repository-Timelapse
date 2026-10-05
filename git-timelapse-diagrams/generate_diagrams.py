@@ -52,10 +52,9 @@ flowchart TD
     E --> F[Extract commits, files, diffs, authors, +/-]
     F --> G[Build frontend-ready DTOs]
     G --> H[Calculate evolution metrics]
-    H --> I[Generate LLM commit analysis]
-    I --> J[Generate/store embeddings in pgvector]
-    J --> K[REST API serves historical state]
+    H --> K[REST API serves historical state]
     K --> L[React renders timelapse/dashboard]
+
     M[Developer pushes commit] --> N[GitHub sends signed webhook]
     N --> O{Signature valid?}
     O -- No --> P[Reject]
@@ -67,6 +66,14 @@ flowchart TD
     T --> U[Update lastProcessedSha]
     U --> V[Publish WebSocket/SSE event]
     V --> L
+
+    L --> W[Searching/filtering the timelapse]
+    L --> X[Viewing explanations of commits]
+
+    J[Generate/store embeddings in pgvector] --> W
+    I[Generate LLM commit analysis] --> X
+
+    H -.-> I
 """,
 
 "03_backend_components.mmd": r"""
