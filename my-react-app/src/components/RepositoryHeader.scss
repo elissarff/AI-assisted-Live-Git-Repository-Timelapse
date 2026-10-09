@@ -14,3 +14,14 @@
   .repository-head {color:#64748b;font-size:.75rem;overflow-wrap:anywhere;}
   .repository-head code {color:#475569;font-size:.76rem;}
 }
+
+/* Prominent full-width repository identity, original palette preserved. */
+.extraction-page .repository-header {padding:clamp(24px,3.3vw,48px);gap:22px;width:100%;border-radius:16px;}
+.repository-header .repository-icon {width:64px;height:64px;border-radius:16px;font-size:2.65rem;}
+.repository-header h1 {font-size:clamp(2rem,3.5vw,3.1rem);line-height:1.12;}
+.repository-header p {font-size:1rem;margin-top:9px;}
+.repository-header .repository-back {font-size:.95rem;}
+.repository-header .repository-header-row {gap:24px;}
+.repository-header .branch-pill {padding:12px 18px;font-size:.95rem;}
+.repository-header .sync-action {padding:13px 22px;font-size:.96rem;}
+.repository-header .repository-head {font-size:.85rem;padding-top:8px;border-top:1px solid #e2e8f0;}

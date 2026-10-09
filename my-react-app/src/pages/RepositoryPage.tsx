@@ -8,6 +8,7 @@ import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
 import CommitSummary from "../components/CommitSummary";
 import RepositoryHeader from "../components/RepositoryHeader";
+import MetricsExplorer from "../components/MetricsExplorer";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
 
@@ -38,6 +39,7 @@ export default function RepositoryPage() {
   const dragStart = useRef<{x:number;width:number;total:number}|null>(null);
   const [treeWidth,setTreeWidth] = useState(18);
   const [treeHidden,setTreeHidden] = useState(false);
+  const treeWidthRef = useRef(treeWidth);
   const frameCache = useRef(new Map<string,{detail:CommitDetail;tree:Tree}>());
   const fileCache = useRef(new Map<string,FileContent|null>());
   const selected = commits[index] ?? null;
@@ -165,18 +167,27 @@ export default function RepositoryPage() {
     if (fileCache.current.has(key)) return Promise.resolve(fileCache.current.get(key) ?? null);
     return getFile(id,sha,path).then(value=>{fileCache.current.set(key,value);return value;});
   };
-  const startResize = (event:React.PointerEvent<HTMLDivElement>) => {
-    const total=workspaceRef.current?.getBoundingClientRect().width;
+  const updateTreeWidth = (next: number) => {
+    const width = Math.max(0, Math.min(75, next));
+    treeWidthRef.current = width;
+    setTreeWidth(width);
+    setTreeHidden(width === 0);
+  };
+  const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const total = workspaceRef.current?.getBoundingClientRect().width;
     if (!total) return;
-    dragStart.current={x:event.clientX,width:treeWidth,total};
+    dragStart.current = { x: event.clientX, width: treeWidthRef.current, total };
     event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
   };
-  const moveResize = (event:React.PointerEvent<HTMLDivElement>) => {
+  const moveResize = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!dragStart.current) return;
-    const next=dragStart.current.width+(event.clientX-dragStart.current.x)*100/dragStart.current.total;
-    if (next<10) {setTreeHidden(true);return;}
-    setTreeHidden(false);setTreeWidth(Math.max(18,Math.min(75,next)));
+    const { x, width, total } = dragStart.current;
+    const next = width + (event.clientX - x) * 100 / total;
+    updateTreeWidth(next < 2 ? 0 : next);
   };
+  const stopResize = () => { dragStart.current = null; };
 
   const sync = async () => {
     if (!repoKey) return;
@@ -221,17 +232,10 @@ export default function RepositoryPage() {
                   <div><strong>+{metrics.totalAdditions.toLocaleString()}</strong><span>Lines added</span></div>
                   <div><strong>-{metrics.totalDeletions.toLocaleString()}</strong><span>Lines removed</span></div>
                 </div>
-                {metricsOpen && (
-                  <div className="metrics-grid">
-                    <div className="metric-table-wrap"><h3>Activity over time</h3><table className="metric-table"><thead><tr><th>Month</th><th>Commits</th><th>Churn</th></tr></thead><tbody>{metrics.activityOverTime.map(x => <tr key={x.period}><td>{x.period}</td><td>{x.commits}</td><td>+{x.additions} / -{x.deletions}</td></tr>)}</tbody></table></div>
-                    <div className="metric-table-wrap"><h3>Contributor activity</h3><table className="metric-table"><thead><tr><th>Contributor</th><th>Commits</th><th>Churn</th></tr></thead><tbody>{metrics.contributors.slice(0,15).map(x => <tr key={x.name}><td>{x.name}</td><td>{x.commits}</td><td>{x.churn.toLocaleString()}</td></tr>)}</tbody></table></div>
-                    <div className="metric-table-wrap"><h3>Frequently changed files / hotspots</h3><table className="metric-table"><thead><tr><th>File</th><th>Changes</th><th>Contributors</th><th>Churn</th></tr></thead><tbody>{metrics.files.slice(0,20).map(x => <tr key={x.path}><td><code>{x.path}</code></td><td>{x.changes}</td><td>{x.contributorCount}</td><td>{x.churn.toLocaleString()}</td></tr>)}</tbody></table></div>
-                    <div className="metric-table-wrap"><h3>Frequently changing directories</h3><table className="metric-table"><thead><tr><th>Directory</th><th>Changes</th><th>Churn</th></tr></thead><tbody>{metrics.directories.slice(0,20).map(x => <tr key={x.path}><td><code>{x.path}</code></td><td>{x.changes}</td><td>{x.churn.toLocaleString()}</td></tr>)}</tbody></table></div>
-                    <div className="metric-table-wrap metric-wide"><h3>Files changed together</h3><table className="metric-table"><thead><tr><th>File A</th><th>File B</th><th>Commits together</th></tr></thead><tbody>{metrics.filesChangedTogether.slice(0,20).map((x,i) => <tr key={`${x.firstPath}-${x.secondPath}-${i}`}><td><code>{x.firstPath}</code></td><td><code>{x.secondPath}</code></td><td>{x.commitsTogether}</td></tr>)}</tbody></table></div>
-                  </div>
-                )}
+
               </section>
             )}
+            {metrics && metricsOpen && <MetricsExplorer metrics={metrics} onClose={() => setMetricsOpen(false)} />}
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
                 commits={commits}
@@ -247,18 +251,18 @@ export default function RepositoryPage() {
             </section>
 
             <section ref={workspaceRef} className={`workspace-resizable ${!selectedPath ? "tree-only" : ""} ${treeHidden ? "tree-hidden" : ""}`} style={{"--tree-width":`${treeWidth}%`} as React.CSSProperties}>
-              {treeHidden && <button type="button" className="restore-tree" onClick={()=>{setTreeHidden(false);setTreeWidth(34);}}>☰ Show repository tree</button>}
+              {treeHidden && <button type="button" className="restore-tree" onClick={()=>updateTreeWidth(18)}>☰ Show repository tree</button>}
               <div className="workspace-columns">
               <div className="card workspace-tree">
                 <div className="viewport-heading">
                   <div><h2>Repository tree</h2><p className="muted">Select a file to follow across commits.</p></div>
-                  <div className="tree-heading-actions">{loadingFrame && <span className="muted">Updating…</span>}<button type="button" className="tree-collapse" onClick={()=>setTreeHidden(true)} title="Hide repository tree">«</button></div>
+                  <div className="tree-heading-actions">{loadingFrame && <span className="muted">Updating…</span>}<button type="button" className="tree-collapse" onClick={()=>updateTreeWidth(0)} title="Hide repository tree">«</button></div>
                 </div>
                 {tree ? (
                   <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} />
                 ) : <p className="muted">{loadingFrame ? "Loading commit…" : "No tree loaded."}</p>}
               </div>
-              {selectedPath && !treeHidden && <div className="workspace-resize-handle" role="separator" aria-label="Resize repository tree" aria-orientation="vertical" tabIndex={0} onPointerDown={startResize} onPointerMove={moveResize} onPointerUp={()=>{dragStart.current=null;}} onLostPointerCapture={()=>{dragStart.current=null;}} onDoubleClick={()=>setTreeWidth(34)} onKeyDown={event=>{if(event.key==="ArrowLeft"||event.key==="ArrowRight"){event.preventDefault();setTreeWidth(w=>Math.max(18,Math.min(75,w+(event.key==="ArrowRight"?5:-5))));}}}><span /></div>}
+              {selectedPath && <div className="workspace-resize-handle" role="separator" aria-label="Resize repository tree" aria-orientation="vertical" tabIndex={0} onPointerDown={startResize} onPointerMove={moveResize} onPointerUp={stopResize} onLostPointerCapture={stopResize} onDoubleClick={()=>updateTreeWidth(18)} onKeyDown={event=>{if(event.key==="ArrowLeft"||event.key==="ArrowRight"){event.preventDefault();updateTreeWidth(treeWidthRef.current+(event.key==="ArrowRight"?5:-5));}}}><span /></div>}
               {selectedPath && <div className="card workspace-diff">
                 <div className="viewport-heading">
                   <div><h2>{selectedPath}</h2><p className="muted">File viewer</p></div>

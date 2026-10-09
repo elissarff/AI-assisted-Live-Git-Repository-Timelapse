@@ -44,3 +44,16 @@
 .tree-collapse,.restore-tree {background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:999px;padding:6px 12px;}
 .restore-tree {margin-bottom:10px;}
 @media(max-width:760px){.workspace-columns{display:block;}.workspace-resize-handle{display:none;}.workspace-diff{margin-top:14px;}}
+
+/* Zero-width collapsible tree: divider remains interactive at zero. */
+.workspace-resizable.tree-hidden .workspace-columns {display:grid;}
+.workspace-resizable.tree-hidden .workspace-tree {display:block;visibility:hidden;padding:0;border:0;min-width:0;}
+.workspace-resizable.tree-hidden .workspace-diff {min-width:0;}
+.workspace-resizable:not(.tree-only) .workspace-columns {grid-template-columns:minmax(0,var(--tree-width)) 10px minmax(0,1fr);}
+.workspace-resizable .workspace-tree {min-width:0;overflow:auto;}
+.workspace-resize-handle {min-width:10px;}
+@media(max-width:760px){
+ .workspace-resizable:not(.tree-only) .workspace-columns {display:flex;flex-direction:column;}
+ .workspace-resizable.tree-hidden .workspace-tree {display:none;}
+ .workspace-resizable .workspace-resize-handle {display:none;}
+}
