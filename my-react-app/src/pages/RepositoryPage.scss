@@ -73,18 +73,6 @@
   min-height: 1100px;
   overflow-y: visible;
 }
-/* Overview: repository identity and compact metrics sit together above playback. */
-.overview-row {display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:14px;align-items:stretch;}
-.overview-row > .repository-header {height:100%;}
-.overview-row > .metrics-panel {min-width:0;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(18px,2vw,28px);}
-.overview-row .metrics-heading {align-items:center;}
-.overview-row .metrics-heading h2 {font-size:1.15rem;}
-.overview-row .metrics-heading p {margin:5px 0 0;}
-.overview-row .metric-cards {grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:20px;}
-.overview-row .metric-cards > div {background:white;border:1px solid #dbeafe;border-radius:13px;padding:14px 10px;gap:7px;min-width:0;}
-.overview-row .metric-cards strong {color:#1d4ed8;font-size:clamp(1.05rem,1.5vw,1.45rem);overflow-wrap:anywhere;}
-.overview-row .metric-cards span {color:#475569;font-weight:550;font-size:.75rem;}
-.overview-row .repository-header .repository-header-row {align-items:flex-start;}
-@media(max-width:1150px){.overview-row {grid-template-columns:1fr;}.overview-row .metric-cards {grid-template-columns:repeat(6,minmax(0,1fr));}}
-@media(max-width:780px){.overview-row .metric-cards {grid-template-columns:repeat(3,minmax(0,1fr));}}
-@media(max-width:420px){.overview-row .metric-cards {grid-template-columns:repeat(2,minmax(0,1fr));}}
+/* Expanded analytics are still the original MetricsExplorer component. */
+.metrics-details-anchor {scroll-margin-top:20px;}
+@media(prefers-reduced-motion:reduce){.metrics-details-anchor {scroll-behavior:auto;}}

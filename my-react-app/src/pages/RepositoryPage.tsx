@@ -1,6 +1,6 @@
 import "./RepositoryPage.scss";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
 import { getCommit, getCommits, getFile, getTree, getMetrics } from "../api/commits";
 import RepositoryTree from "../components/RepositoryTree";
@@ -34,6 +34,15 @@ export default function RepositoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<RepositoryMetrics | null>(null);
   const [metricsOpen, setMetricsOpen] = useState(false);
+  const metricsSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!metricsOpen) return;
+    const frame = requestAnimationFrame(() => {
+      metricsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [metricsOpen]);
 
   const workspaceRef = useRef<HTMLElement>(null);
   const dragStart = useRef<{x:number;width:number;total:number}|null>(null);
@@ -211,29 +220,17 @@ export default function RepositoryPage() {
   return (
     <main className="page extraction-page">
       <section className="extraction-card">
-        <div style={{padding: "20px"}}>
-          <Link className="repository-back" to="/repositories">← Back to repositories</Link> 
-        </div>
-        <div className="overview-row">
-          
-          <StableHeader repository={repository} syncing={syncing} onSync={sync} />
-          {metrics && (
-            <section className="card metrics-panel" aria-label="Repository metrics" style={{backgroundColor: "#f8fafc"}}>
-              <div className="metrics-heading">
-                <div><h2>Repository metrics</h2><p className="muted">A quick look at your repository</p></div>
-                <button type="button" className="secondary-button" onClick={() => setMetricsOpen(v => !v)}>{metricsOpen ? "Hide details" : "Explore metrics"}</button>
-              </div>
-              <div className="metric-cards">
-                <div><strong>{metrics.totalCommits.toLocaleString()}</strong><span>Commits</span></div>
-                <div><strong>{metrics.contributorCount.toLocaleString()}</strong><span>Contributors</span></div>
-                <div><strong>{metrics.repositoryAgeDays.toLocaleString()}d</strong><span>Repository age</span></div>
-                <div><strong>{metrics.codeChurn.toLocaleString()}</strong><span>Code churn</span></div>
-                <div><strong>+{metrics.totalAdditions.toLocaleString()}</strong><span>Lines added</span></div>
-                <div><strong>-{metrics.totalDeletions.toLocaleString()}</strong><span>Lines removed</span></div>
-              </div>
-            </section>
-          )}
-        </div>
+        <StableHeader
+          repository={repository}
+          metrics={metrics}
+          syncing={syncing}
+          onSync={sync}
+          metricsOpen={metricsOpen}
+          onExploreMetrics={() => {
+            if (!metricsOpen) setMetricsOpen(true);
+            else metricsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
 
         {error && <p className="error">{error}</p>}
         {!repository && !error && <p>Loading repository...</p>}
@@ -288,7 +285,7 @@ export default function RepositoryPage() {
               </div>}
               </div>
             </section>
-            {metrics && metricsOpen && <MetricsExplorer metrics={metrics} onClose={() => setMetricsOpen(false)} />}
+            {metrics && metricsOpen && <div ref={metricsSectionRef} className="metrics-details-anchor"><MetricsExplorer metrics={metrics} onClose={() => setMetricsOpen(false)} /></div>}
           </>
         )}
       </section>
