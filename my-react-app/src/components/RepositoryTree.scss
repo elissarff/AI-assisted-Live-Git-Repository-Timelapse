@@ -1,0 +1,55 @@
+.tree-row { min-height: 28px; display: flex; align-items: center; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9rem; }
+
+.file-link { background: transparent; color: #0969da; padding: .2rem .35rem; border-radius: 4px; text-align: left; }
+
+.file-link:hover, .file-link.selected { background: #ddf4ff; }
+
+.file-link:disabled { color: #656d76; cursor: default; }
+
+.tree-row { position: relative; border-radius: 5px; transition: background-color .25s ease, transform .25s ease, opacity .25s ease; }
+
+.directory-label { color: #57606a; font-weight: 650; }
+
+.file-link { width: 100%; display: flex; align-items: center; gap: .35rem; }
+
+.file-icon { color: #8c959f; }
+
+.change-badge { margin-left: auto; padding: .12rem .38rem; border-radius: 999px; font-size: .62rem; font-weight: 800; letter-spacing: .03em; }
+
+.tree-row.directory-changed > .directory-label { color: #0969da; }
+
+.tree-row.change-add { background: #dafbe1; animation: repo-file-enter .5s ease both; }
+
+.tree-row.change-modify { background: #fff8c5; animation: repo-file-pulse .65s ease both; }
+
+.tree-row.change-rename, .tree-row.change-copy { background: #ddf4ff; animation: repo-file-enter .5s ease both; }
+
+.change-badge.change-add { background: #1a7f37; color: white; }
+
+.change-badge.change-modify { background: #9a6700; color: white; }
+
+.change-badge.change-rename, .change-badge.change-copy { background: #0969da; color: white; }
+
+@keyframes repo-file-enter { from { opacity: .25; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+
+@keyframes repo-file-pulse { 0% { transform: scale(.99); } 45% { transform: scale(1.012); } 100% { transform: scale(1); } }
+
+.tree-row.change-delete { background: #ffebe9; animation: repo-file-delete .7s ease both; }
+
+.change-badge.change-delete { background: #cf222e; color: white; }
+
+.deleted-ghost { opacity: .78; }
+
+.deleted-file { width: 100%; display: flex; align-items: center; gap: .35rem; color: #82071e; text-decoration: line-through; cursor: default; }
+
+@keyframes repo-file-delete {
+  0% { opacity: 1; transform: translateX(0); }
+  45% { opacity: 1; transform: translateX(3px); }
+  100% { opacity: .78; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce)  { .tree-row { transition: none; } }
+
+@media (prefers-reduced-motion: reduce)  { .tree-row.change-add, .tree-row.change-modify, .tree-row.change-rename, .tree-row.change-copy, .tree-row.change-delete { animation: none; } }
+
+.deleted-file { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }

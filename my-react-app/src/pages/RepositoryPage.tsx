@@ -1,3 +1,4 @@
+import "./RepositoryPage.scss";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
@@ -5,6 +6,7 @@ import { getCommit, getCommits, getFile, getTree, getMetrics } from "../api/comm
 import RepositoryTree from "../components/RepositoryTree";
 import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
+import CommitSummary from "../components/CommitSummary";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
 
@@ -112,7 +114,7 @@ export default function RepositoryPage() {
   };
 
   useEffect(() => {
-    if (!repoKey || !selected || !selectedPath || !detail) return;
+    if (!repoKey || !selected || !selectedPath || !detail || detail.sha !== selected.sha) return;
 
     let cancelled = false;
     const change = detail.files.find(
@@ -178,25 +180,27 @@ export default function RepositoryPage() {
 
   return (
     <main className="page extraction-page">
-      <section className="card extraction-card">
-        <Link to="/repositories">Back to repositories</Link>
-        <h1>{repository?.name ?? "Repository Git Extraction"}</h1>
-        <p className="muted">Basic extraction UI only. The selected commit drives both the repository tree and file reads.</p>
+      <section className="extraction-card">
+        <section className="card">
+          <Link to="/repositories">Back to repositories</Link>
+          <h1>{repository?.name ?? "Repository Git Extraction"}</h1>
+          <p className="muted">Basic extraction UI only. The selected commit drives both the repository tree and file reads.</p>
+          {repository && (
+            <div className="toolbar">
+              <button onClick={sync} disabled={syncing}>{syncing ? "Syncing..." : "Sync repository"}</button>
+              <span>Branch: <strong>{repository.branch || "-"}</strong></span>
+              <span>HEAD: <code>{repository.headSha || "-"}</code></span>
+            </div>
+          )}
+        </section>
 
         {error && <p className="error">{error}</p>}
         {!repository && !error && <p>Loading repository...</p>}
 
         {repository && (
           <>
-            <div className="toolbar">
-              <button onClick={sync} disabled={syncing}>{syncing ? "Syncing..." : "Sync repository"}</button>
-              <span>Branch: <strong>{repository.branch || "-"}</strong></span>
-              <span>HEAD: <code>{repository.headSha || "-"}</code></span>
-            </div>
-
-            <hr />
             {metrics && (
-              <section className="metrics-panel">
+              <section className="card metrics-panel">
                 <div className="metrics-heading">
                   <div><h2>Repository metrics</h2><p className="muted">Git-derived evolution metrics only. no LLM analysis.</p></div>
                   <button type="button" className="secondary-button" onClick={() => setMetricsOpen(v => !v)}>{metricsOpen ? "Hide details" : "Explore metrics"}</button>
@@ -220,7 +224,7 @@ export default function RepositoryPage() {
                 )}
               </section>
             )}
-            <section className="timelapse-bottom">
+            <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
                 commits={commits}
                 currentIndex={index}
@@ -231,25 +235,10 @@ export default function RepositoryPage() {
                 onSpeedChange={setSpeed}
               />
 
-              {selected && (
-                <div className="commit-bottom-details">
-                  <div className="commit-bottom-message">
-                    <span className="timelapse-kicker">COMMIT</span>
-                    <strong>{selected.message}</strong>
-                  </div>
-                  <code title={selected.sha}>{selected.sha.slice(0, 12)}</code>
-                  <span>{selected.author}</span>
-                  <span>{new Date(selected.timestamp).toLocaleString()}</span>
-                  {detail && (
-                    <span className="commit-stats">
-                      {detail.filesChanged} files · <b>+{detail.additions}</b> / <b>-{detail.deletions}</b>
-                    </span>
-                  )}
-                </div>
-              )}
+              <CommitSummary commit={selected} detail={detail?.sha === selected?.sha ? detail : null} />
             </section>
 
-            <section className="extract-section timelapse-viewport">
+            <section className="card timelapse-viewport">
               {!selectedPath ? (
                 <>
                   <div className="viewport-heading">
@@ -259,13 +248,13 @@ export default function RepositoryPage() {
                     </div>
                     {loadingFrame && <span className="muted">Loading commit…</span>}
                   </div>
-                  {tree ? (
+                  {!loadingFrame && tree ? (
                     <RepositoryTree
                       node={tree.root}
                       onFileClick={openFile}
                       changes={detail?.files ?? []}
                     />
-                  ) : <p>No tree loaded.</p>}
+                  ) : <p>{loadingFrame ? "Loading commit…" : "No tree loaded."}</p>}
                 </>
               ) : (
                 <>
@@ -274,7 +263,7 @@ export default function RepositoryPage() {
                     <code>{selectedPath}</code>
                   </div>
 
-                  {loadingFile ? <p>Loading this file at the selected commit...</p> : selectedChange ? (
+                  {(loadingFrame || loadingFile || detail?.sha !== selected?.sha) ? <p>Loading this file at the selected commit...</p> : selectedChange ? (
                     <>
                       <p className="muted">
                         <strong>{selectedChange.changeType}</strong> · +{selectedChange.additions} / -{selectedChange.deletions}

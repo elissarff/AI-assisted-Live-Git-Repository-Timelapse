@@ -1,3 +1,4 @@
+import "./TimeLine.scss";
 import type { Commit } from "../types/git";
 
 type Props = {

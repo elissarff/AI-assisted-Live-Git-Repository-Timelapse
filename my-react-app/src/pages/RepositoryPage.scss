@@ -1,0 +1,63 @@
+.extraction-card { width: min(1200px, 100%); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: 1rem 0; }
+
+.toolbar code { overflow-wrap: anywhere; }
+
+.commit-select { width: 100%; padding: .65rem; font: inherit; }
+
+.extract-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.5fr); gap: 1rem; align-items: start; }
+
+.extract-section { margin-top: 1.25rem; border: 1px solid #d8dee4; border-radius: 8px; padding: 1rem; min-width: 0; }
+
+.change-list { padding-left: 1.4rem; }
+
+.change-list li { margin: .35rem 0; overflow-wrap: anywhere; }
+
+@media (max-width: 800px)  { .extract-grid { grid-template-columns: 1fr; } }
+
+/* The timelapse has one viewport: repository tree OR a persistent selected file. */
+.timelapse-viewport { min-height: 360px; }
+
+.file-view-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+
+.back-to-tree { cursor: pointer; }
+
+.file-unavailable { padding: 28px 16px; text-align: center; border: 1px dashed currentColor; border-radius: 8px; opacity: .8; }
+
+/* Repository history is a workspace, so let it use the screen instead of the generic narrow card. */
+.extraction-page {
+  display: block;
+  padding: 1.25rem;
+}
+
+.extraction-card {
+  width: 100%;
+  max-width: none;
+  min-height: calc(100vh - 2.5rem);
+  padding: clamp(1rem, 2vw, 2rem);
+}
+
+.timelapse-viewport {
+  min-height: 55vh;
+  margin-top: 1rem;
+}
+
+.viewport-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.viewport-heading h2 { margin-top: 0; }
+
+/* Playback + compact commit context belong at the bottom of the workspace. */
+.timelapse-bottom {
+  margin-top: 1rem;
+  border: 1px solid #d8dee4;
+  border-radius: 10px;
+  background: #f6f8fa;
+  overflow: hidden;
+}
+

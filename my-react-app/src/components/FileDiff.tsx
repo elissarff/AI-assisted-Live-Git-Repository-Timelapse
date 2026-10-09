@@ -1,3 +1,4 @@
+import "./FileDiff.scss";
 import type { DiffHunk, DiffLine, FileChange } from "../types/git";
 
 type Props = {

@@ -1,3 +1,4 @@
+import "./RepositoryTree.scss";
 import { useState } from "react";
 import type { FileChange, RepositoryTreeNode } from "../types/git";
 

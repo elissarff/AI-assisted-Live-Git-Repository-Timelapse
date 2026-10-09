@@ -1,0 +1,37 @@
+.timeline-range { width: 100%; margin: .5rem 0 1rem; }
+
+/* Repository timelapse */
+.timelapse-player { margin: 1rem 0 1.5rem; padding: 1rem 1.1rem; border: 1px solid #d8dee4; border-radius: 12px; background: linear-gradient(180deg, #fff, #f6f8fa); }
+
+.timelapse-now { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
+
+.timelapse-now > div { display: grid; gap: .2rem; min-width: 0; }
+
+.timelapse-now strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.timelapse-kicker { color: #656d76; font-size: .7rem; font-weight: 800; letter-spacing: .08em; }
+
+.timelapse-count { font-variant-numeric: tabular-nums; color: #656d76; white-space: nowrap; }
+
+.timelapse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+
+.player-button { min-width: 42px; padding: .55rem .75rem; }
+
+.player-button.secondary { background: #fff; color: #1f2328; border: 1px solid #d0d7de; }
+
+.player-button.play { min-width: 82px; }
+
+.speed-controls { display: flex; gap: .25rem; margin-left: auto; padding-left: .75rem; border-left: 1px solid #d8dee4; }
+
+.speed-button { background: transparent; color: #656d76; padding: .45rem .55rem; font-size: .82rem; }
+
+.speed-button.active { background: #1f2328; color: #fff; }
+
+.timelapse-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .8rem; color: #656d76; font-size: .8rem; }
+
+.timelapse-bottom .timelapse-player {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
