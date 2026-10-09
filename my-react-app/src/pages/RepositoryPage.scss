@@ -30,3 +30,17 @@
 @media(max-width:1100px){.metric-cards{grid-template-columns:repeat(3,minmax(0,1fr));}}
 @media(max-width:760px){.extraction-page{padding:10px;}.workspace-grid,.metrics-grid{grid-template-columns:1fr;}.workspace-tree,.workspace-diff{max-height:none;min-height:250px;}.metric-wide{grid-column:auto;}}
 @media(max-width:480px){.metric-cards{grid-template-columns:repeat(2,minmax(0,1fr));}}
+
+.workspace-columns {display:grid;grid-template-columns:minmax(0,var(--tree-width)) 10px minmax(0,1fr);align-items:stretch;}
+
+.workspace-resizable.tree-only .workspace-columns,.workspace-resizable.tree-hidden .workspace-columns {display:block;}
+
+.workspace-resizable.tree-hidden .workspace-tree {display:none;}
+.workspace-resizable.tree-hidden .workspace-diff {width:100%;}
+.workspace-resize-handle {touch-action:none;cursor:col-resize;display:flex;align-items:center;justify-content:center;background:#f8fafc;}
+.workspace-resize-handle span {height:54px;width:4px;background:#cbd5e1;border-radius:10px;}
+.workspace-resize-handle:hover span,.workspace-resize-handle:focus-visible span {background:#2563eb;}
+.tree-heading-actions {display:flex;align-items:center;gap:8px;}
+.tree-collapse,.restore-tree {background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:999px;padding:6px 12px;}
+.restore-tree {margin-bottom:10px;}
+@media(max-width:760px){.workspace-columns{display:block;}.workspace-resize-handle{display:none;}.workspace-diff{margin-top:14px;}}

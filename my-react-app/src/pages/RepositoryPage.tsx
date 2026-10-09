@@ -1,5 +1,5 @@
 import "./RepositoryPage.scss";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
 import { getCommit, getCommits, getFile, getTree, getMetrics } from "../api/commits";
@@ -34,6 +34,12 @@ export default function RepositoryPage() {
   const [metrics, setMetrics] = useState<RepositoryMetrics | null>(null);
   const [metricsOpen, setMetricsOpen] = useState(false);
 
+  const workspaceRef = useRef<HTMLElement>(null);
+  const dragStart = useRef<{x:number;width:number;total:number}|null>(null);
+  const [treeWidth,setTreeWidth] = useState(18);
+  const [treeHidden,setTreeHidden] = useState(false);
+  const frameCache = useRef(new Map<string,{detail:CommitDetail;tree:Tree}>());
+  const fileCache = useRef(new Map<string,FileContent|null>());
   const selected = commits[index] ?? null;
 
   const loadHistory = useCallback(async (repositoryId: string, preferSha?: string) => {
@@ -64,25 +70,21 @@ export default function RepositoryPage() {
   }, [repoKey]);
 
   useEffect(() => {
-    if (!repoKey || !selected) {
-      setDetail(null);
-      setTree(null);
-      return;
-    }
+    if (!repoKey || !selected) return;
     let cancelled = false;
+    const key = `${repoKey}:${selected.sha}`;
+    const cached = frameCache.current.get(key);
+    if (cached) { setDetail(cached.detail); setTree(cached.tree); setLoadingFrame(false); return; }
     setLoadingFrame(true);
-    setError(null);
-    Promise.all([getCommit(repoKey, selected.sha), getTree(repoKey, selected.sha)])
-      .then(([commitDetail, repositoryTree]) => {
-        if (!cancelled) {
-          setDetail(commitDetail);
-          setTree(repositoryTree);
-        }
+    Promise.all([getCommit(repoKey,selected.sha),getTree(repoKey,selected.sha)])
+      .then(([nextDetail,nextTree]) => {
+        frameCache.current.set(key,{detail:nextDetail,tree:nextTree});
+        if (!cancelled) {setDetail(nextDetail);setTree(nextTree);}
       })
-      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "Could not load commit."))
-      .finally(() => !cancelled && setLoadingFrame(false));
-    return () => { cancelled = true; };
-  }, [repoKey, selected?.sha]);
+      .catch(err => {if (!cancelled) setError(err instanceof Error ? err.message : "Could not load commit.");})
+      .finally(() => {if (!cancelled) setLoadingFrame(false);});
+    return () => {cancelled=true;};
+  },[repoKey,selected?.sha]);
 
   useEffect(() => {
     if (!playing || commits.length < 2) return;
@@ -100,11 +102,11 @@ export default function RepositoryPage() {
 
   // File selection is intentionally independent from the timeline. Advancing
   // commits changes the version being displayed, not which file the user chose.
-  const openFile = (node: RepositoryTreeNode, explicitChange?: FileChange) => {
+  const openFile = useCallback((node: RepositoryTreeNode, explicitChange?: FileChange) => {
     if (node.type === "DIRECTORY") return;
     setSelectedPath(node.path);
     setSelectedChange(explicitChange ?? null);
-  };
+  }, []);
 
   const backToTree = () => {
     setSelectedPath(null);
@@ -133,9 +135,6 @@ export default function RepositoryPage() {
     }
 
     setSelectedChange(change);
-    setFile(null);
-    setBeforeFile(null);
-    setFileUnavailable(false);
     setLoadingFile(true);
 
     const parentSha = detail.parentShas?.[0];
@@ -145,10 +144,10 @@ export default function RepositoryPage() {
     Promise.all([
       change?.changeType === "DELETE"
         ? Promise.resolve(null)
-        : getFile(repoKey, selected.sha, afterPath).catch(() => null),
+        : cachedFile(repoKey, selected.sha, afterPath).catch(() => null),
       !parentSha || change?.changeType === "ADD"
         ? Promise.resolve(null)
-        : getFile(repoKey, parentSha, beforePath).catch(() => null),
+        : cachedFile(repoKey, parentSha, beforePath).catch(() => null),
     ]).then(([after, before]) => {
       if (cancelled) return;
       setFile(after);
@@ -161,6 +160,24 @@ export default function RepositoryPage() {
     return () => { cancelled = true; };
   }, [repoKey, selected?.sha, selectedPath, detail]);
 
+  const cachedFile = (id:string,sha:string,path:string) => {
+    const key=`${id}:${sha}:${path}`;
+    if (fileCache.current.has(key)) return Promise.resolve(fileCache.current.get(key) ?? null);
+    return getFile(id,sha,path).then(value=>{fileCache.current.set(key,value);return value;});
+  };
+  const startResize = (event:React.PointerEvent<HTMLDivElement>) => {
+    const total=workspaceRef.current?.getBoundingClientRect().width;
+    if (!total) return;
+    dragStart.current={x:event.clientX,width:treeWidth,total};
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const moveResize = (event:React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    const next=dragStart.current.width+(event.clientX-dragStart.current.x)*100/dragStart.current.total;
+    if (next<10) {setTreeHidden(true);return;}
+    setTreeHidden(false);setTreeWidth(Math.max(18,Math.min(75,next)));
+  };
+
   const sync = async () => {
     if (!repoKey) return;
     setSyncing(true);
@@ -168,6 +185,7 @@ export default function RepositoryPage() {
     setError(null);
     try {
       await syncRepository(repoKey);
+      frameCache.current.clear();fileCache.current.clear();
       const repo = await getRepository(repoKey);
       setRepository(repo as Repository);
       await loadHistory(repoKey, repo.headSha);
@@ -182,7 +200,7 @@ export default function RepositoryPage() {
   return (
     <main className="page extraction-page">
       <section className="extraction-card">
-        <RepositoryHeader repository={repository} syncing={syncing} onSync={sync} />
+        <StableHeader repository={repository} syncing={syncing} onSync={sync} />
 
         {error && <p className="error">{error}</p>}
         {!repository && !error && <p>Loading repository...</p>}
@@ -228,16 +246,19 @@ export default function RepositoryPage() {
               <CommitSummary commit={selected} detail={detail?.sha === selected?.sha ? detail : null} />
             </section>
 
-            <section className={selectedPath ? "workspace-grid" : ""}>
+            <section ref={workspaceRef} className={`workspace-resizable ${!selectedPath ? "tree-only" : ""} ${treeHidden ? "tree-hidden" : ""}`} style={{"--tree-width":`${treeWidth}%`} as React.CSSProperties}>
+              {treeHidden && <button type="button" className="restore-tree" onClick={()=>{setTreeHidden(false);setTreeWidth(34);}}>☰ Show repository tree</button>}
+              <div className="workspace-columns">
               <div className="card workspace-tree">
                 <div className="viewport-heading">
                   <div><h2>Repository tree</h2><p className="muted">Select a file to follow across commits.</p></div>
-                  {loadingFrame && <span className="muted">Loading…</span>}
+                  <div className="tree-heading-actions">{loadingFrame && <span className="muted">Updating…</span>}<button type="button" className="tree-collapse" onClick={()=>setTreeHidden(true)} title="Hide repository tree">«</button></div>
                 </div>
-                {!loadingFrame && tree ? (
-                  <RepositoryTree node={tree.root} onFileClick={openFile} changes={detail?.sha === selected?.sha ? detail.files : []} />
+                {tree ? (
+                  <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} />
                 ) : <p className="muted">{loadingFrame ? "Loading commit…" : "No tree loaded."}</p>}
               </div>
+              {selectedPath && !treeHidden && <div className="workspace-resize-handle" role="separator" aria-label="Resize repository tree" aria-orientation="vertical" tabIndex={0} onPointerDown={startResize} onPointerMove={moveResize} onPointerUp={()=>{dragStart.current=null;}} onLostPointerCapture={()=>{dragStart.current=null;}} onDoubleClick={()=>setTreeWidth(34)} onKeyDown={event=>{if(event.key==="ArrowLeft"||event.key==="ArrowRight"){event.preventDefault();setTreeWidth(w=>Math.max(18,Math.min(75,w+(event.key==="ArrowRight"?5:-5))));}}}><span /></div>}
               {selectedPath && <div className="card workspace-diff">
                 <div className="viewport-heading">
                   <div><h2>{selectedPath}</h2><p className="muted">File viewer</p></div>
@@ -257,6 +278,7 @@ export default function RepositoryPage() {
                   <div className="file-unavailable"><h3>File unavailable at this commit</h3><p className="muted">Playback will continue and the file will appear when it exists.</p></div>
                 ) : <p className="muted">No file content at this commit.</p>}
               </div>}
+              </div>
             </section>
 
             
@@ -266,3 +288,5 @@ export default function RepositoryPage() {
     </main>
   );
 }
+
+const StableHeader = memo(RepositoryHeader);

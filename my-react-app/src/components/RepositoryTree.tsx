@@ -1,5 +1,5 @@
 import "./RepositoryTree.scss";
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { FileChange, RepositoryTreeNode } from "../types/git";
 
 type Props = {
@@ -34,7 +34,7 @@ function directoryHasChanges(path: string, changes: FileChange[]) {
 
 
 
-export default function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth = 0 }: Props) {
+function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth = 0 }: Props) {
   const isDirectory = node.type === "DIRECTORY";
   const isRoot = depth === 0 && !node.name;
   const change = !isDirectory ? changeForPath(node.path, changes) : undefined;
@@ -121,3 +121,5 @@ export default function RepositoryTree({ node, onFileClick, selectedPath, change
     </div>
   );
 }
+
+export default memo(RepositoryTree);
