@@ -7,6 +7,7 @@ import RepositoryTree from "../components/RepositoryTree";
 import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
 import CommitSummary from "../components/CommitSummary";
+import RepositoryHeader from "../components/RepositoryHeader";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
 
@@ -181,18 +182,7 @@ export default function RepositoryPage() {
   return (
     <main className="page extraction-page">
       <section className="extraction-card">
-        <section className="card">
-          <Link to="/repositories">Back to repositories</Link>
-          <h1>{repository?.name ?? "Repository Git Extraction"}</h1>
-          <p className="muted">Basic extraction UI only. The selected commit drives both the repository tree and file reads.</p>
-          {repository && (
-            <div className="toolbar">
-              <button onClick={sync} disabled={syncing}>{syncing ? "Syncing..." : "Sync repository"}</button>
-              <span>Branch: <strong>{repository.branch || "-"}</strong></span>
-              <span>HEAD: <code>{repository.headSha || "-"}</code></span>
-            </div>
-          )}
-        </section>
+        <RepositoryHeader repository={repository} syncing={syncing} onSync={sync} />
 
         {error && <p className="error">{error}</p>}
         {!repository && !error && <p>Loading repository...</p>}
@@ -238,58 +228,35 @@ export default function RepositoryPage() {
               <CommitSummary commit={selected} detail={detail?.sha === selected?.sha ? detail : null} />
             </section>
 
-            <section className="card timelapse-viewport">
-              {!selectedPath ? (
-                <>
-                  <div className="viewport-heading">
-                    <div>
-                      <h2>Repository tree</h2>
-                      <p className="muted">Choose a file to follow it while the timeline continues through commits.</p>
-                    </div>
-                    {loadingFrame && <span className="muted">Loading commit…</span>}
-                  </div>
-                  {!loadingFrame && tree ? (
-                    <RepositoryTree
-                      node={tree.root}
-                      onFileClick={openFile}
-                      changes={detail?.files ?? []}
-                    />
-                  ) : <p>{loadingFrame ? "Loading commit…" : "No tree loaded."}</p>}
-                </>
-              ) : (
-                <>
-                  <div className="file-view-header">
-                    <button type="button" className="back-to-tree" onClick={backToTree}>← Repository tree</button>
-                    <code>{selectedPath}</code>
-                  </div>
-
-                  {(loadingFrame || loadingFile || detail?.sha !== selected?.sha) ? <p>Loading this file at the selected commit...</p> : selectedChange ? (
-                    <>
-                      <p className="muted">
-                        <strong>{selectedChange.changeType}</strong> · +{selectedChange.additions} / -{selectedChange.deletions}
-                        {selectedChange.changeType === "RENAME" && selectedChange.oldPath ? ` · from ${selectedChange.oldPath}` : ""}
-                      </p>
-                      <FileDiff
-                        change={selectedChange}
-                        beforeContent={beforeFile?.content}
-                        afterContent={file?.content}
-                      />
-                    </>
-                  ) : file ? (
-                    <>
-                      <p className="muted">Unchanged in this commit · {file.size} bytes · {file.commitSha.slice(0, 12)}</p>
-                      <FileDiff content={file.content} binary={file.binary} />
-                    </>
-                  ) : fileUnavailable ? (
-                    <div className="file-unavailable">
-                      <h3>File does not exist at this point in history</h3>
-                      <p className="muted">The timeline can keep playing. This file view will populate when the path exists in a later commit.</p>
-                    </div>
-                  ) : (
-                    <p>No file content at this commit.</p>
-                  )}
-                </>
-              )}
+            <section className={selectedPath ? "workspace-grid" : ""}>
+              <div className="card workspace-tree">
+                <div className="viewport-heading">
+                  <div><h2>Repository tree</h2><p className="muted">Select a file to follow across commits.</p></div>
+                  {loadingFrame && <span className="muted">Loading…</span>}
+                </div>
+                {!loadingFrame && tree ? (
+                  <RepositoryTree node={tree.root} onFileClick={openFile} changes={detail?.sha === selected?.sha ? detail.files : []} />
+                ) : <p className="muted">{loadingFrame ? "Loading commit…" : "No tree loaded."}</p>}
+              </div>
+              {selectedPath && <div className="card workspace-diff">
+                <div className="viewport-heading">
+                  <div><h2>{selectedPath}</h2><p className="muted">File viewer</p></div>
+                  {selectedPath && <button type="button" className="secondary-button clear-file" onClick={backToTree}>Back to tree</button>}
+                </div>
+                {(loadingFrame || loadingFile || detail?.sha !== selected?.sha) ? <p className="muted">Loading this file at the selected commit…</p>
+                : selectedChange ? (
+                  <>
+                    <p className="muted"><strong>{selectedChange.changeType}</strong> · +{selectedChange.additions} / -{selectedChange.deletions}
+                    {selectedChange.changeType === "RENAME" && selectedChange.oldPath ? ` · from ${selectedChange.oldPath}` : ""}</p>
+                    <FileDiff change={selectedChange} beforeContent={beforeFile?.content} afterContent={file?.content} />
+                  </>
+                ) : file ? (
+                  <><p className="muted">Unchanged in this commit · {file.size} bytes · {file.commitSha.slice(0, 12)}</p>
+                  <FileDiff content={file.content} binary={file.binary} /></>
+                ) : fileUnavailable ? (
+                  <div className="file-unavailable"><h3>File unavailable at this commit</h3><p className="muted">Playback will continue and the file will appear when it exists.</p></div>
+                ) : <p className="muted">No file content at this commit.</p>}
+              </div>}
             </section>
 
             

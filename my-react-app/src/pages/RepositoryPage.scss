@@ -1,63 +1,32 @@
-.extraction-card { width: min(1200px, 100%); }
-
-.toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: 1rem 0; }
-
-.toolbar code { overflow-wrap: anywhere; }
-
-.commit-select { width: 100%; padding: .65rem; font: inherit; }
-
-.extract-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.5fr); gap: 1rem; align-items: start; }
-
-.extract-section { margin-top: 1.25rem; border: 1px solid #d8dee4; border-radius: 8px; padding: 1rem; min-width: 0; }
-
-.change-list { padding-left: 1.4rem; }
-
-.change-list li { margin: .35rem 0; overflow-wrap: anywhere; }
-
-@media (max-width: 800px)  { .extract-grid { grid-template-columns: 1fr; } }
-
-/* The timelapse has one viewport: repository tree OR a persistent selected file. */
-.timelapse-viewport { min-height: 360px; }
-
-.file-view-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-
-.back-to-tree { cursor: pointer; }
-
-.file-unavailable { padding: 28px 16px; text-align: center; border: 1px dashed currentColor; border-radius: 8px; opacity: .8; }
-
-/* Repository history is a workspace, so let it use the screen instead of the generic narrow card. */
-.extraction-page {
-  display: block;
-  padding: 1.25rem;
-}
-
-.extraction-card {
-  width: 100%;
-  max-width: none;
-  min-height: calc(100vh - 2.5rem);
-  padding: clamp(1rem, 2vw, 2rem);
-}
-
-.timelapse-viewport {
-  min-height: 55vh;
-  margin-top: 1rem;
-}
-
-.viewport-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.viewport-heading h2 { margin-top: 0; }
-
-/* Playback + compact commit context belong at the bottom of the workspace. */
-.timelapse-bottom {
-  margin-top: 1rem;
-  border: 1px solid #d8dee4;
-  border-radius: 10px;
-  background: #f6f8fa;
-  overflow: hidden;
-}
-
+.extraction-page {padding:20px;background:#f8fafc;}
+.extraction-card {width:100%;display:grid;gap:14px;}
+.extraction-page .card {background:#fff;border:1px solid #d0d7de;border-radius:12px;padding:20px;min-width:0;}
+.extraction-page .timelapse-bottom {padding:0;overflow:hidden;}
+.workspace-grid {display:grid;grid-template-columns:minmax(270px, min(34%, 430px)) minmax(0,1fr);gap:14px;align-items:stretch;}
+.workspace-tree,.workspace-diff {min-height:450px;max-height:75vh;overflow:auto;}
+.viewport-heading {display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px;}
+.viewport-heading h2 {font-size:1.2rem;margin:0 0 6px;letter-spacing:-.025em;}
+.viewport-heading p {font-size:.85rem;margin:0;color:#64748b;overflow-wrap:anywhere;}
+.clear-file {background:#fff;color:#475569;border:1px solid #d0d7de;border-radius:999px;padding:7px 12px;font-size:.8rem;}
+.workspace-empty {display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:300px;gap:8px;color:#64748b;padding:22px;}
+.workspace-empty span {font-size:3rem;color:#93c5fd;}
+.workspace-empty strong {color:#334155;}
+.workspace-empty p {font-size:.86rem;max-width:300px;}
+.file-unavailable {padding:24px;text-align:center;border:1px dashed #cbd5e1;border-radius:10px;}
+.metrics-panel .metrics-heading {display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap;}
+.metrics-heading h2 {font-size:1.2rem;margin:0;}
+.metrics-heading p {font-size:.85rem;}
+.metrics-panel .secondary-button {background:#fff;color:#334155;border:1px solid #d0d7de;border-radius:999px;padding:9px 15px;font-size:.83rem;}
+.metric-cards {display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-top:18px;}
+.metric-cards>div {display:grid;gap:5px;background:#f6f8fa;border:1px solid #d8dee4;border-radius:10px;padding:14px;}
+.metric-cards strong {font-size:1.2rem;font-variant-numeric:tabular-nums;}
+.metric-cards span {font-size:.76rem;color:#64748b;}
+.metrics-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px;}
+.metric-table-wrap {min-width:0;overflow:auto;border-top:1px solid #d8dee4;padding-top:10px;}
+.metric-wide {grid-column:1/-1;}
+.metric-table {width:100%;border-collapse:collapse;font-size:.82rem;}
+.metric-table th,.metric-table td {padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;}
+.metric-table code {overflow-wrap:anywhere;white-space:normal;}
+@media(max-width:1100px){.metric-cards{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:760px){.extraction-page{padding:10px;}.workspace-grid,.metrics-grid{grid-template-columns:1fr;}.workspace-tree,.workspace-diff{max-height:none;min-height:250px;}.metric-wide{grid-column:auto;}}
+@media(max-width:480px){.metric-cards{grid-template-columns:repeat(2,minmax(0,1fr));}}

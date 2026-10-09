@@ -1,37 +1,23 @@
-.timeline-range { width: 100%; margin: .5rem 0 1rem; }
-
-/* Repository timelapse */
-.timelapse-player { margin: 1rem 0 1.5rem; padding: 1rem 1.1rem; border: 1px solid #d8dee4; border-radius: 12px; background: linear-gradient(180deg, #fff, #f6f8fa); }
-
-.timelapse-now { display: flex; justify-content: space-between; gap: 1rem; align-items: start; }
-
-.timelapse-now > div { display: grid; gap: .2rem; min-width: 0; }
-
-.timelapse-now strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.timelapse-kicker { color: #656d76; font-size: .7rem; font-weight: 800; letter-spacing: .08em; }
-
-.timelapse-count { font-variant-numeric: tabular-nums; color: #656d76; white-space: nowrap; }
-
-.timelapse-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
-
-.player-button { min-width: 42px; padding: .55rem .75rem; }
-
-.player-button.secondary { background: #fff; color: #1f2328; border: 1px solid #d0d7de; }
-
-.player-button.play { min-width: 82px; }
-
-.speed-controls { display: flex; gap: .25rem; margin-left: auto; padding-left: .75rem; border-left: 1px solid #d8dee4; }
-
-.speed-button { background: transparent; color: #656d76; padding: .45rem .55rem; font-size: .82rem; }
-
-.speed-button.active { background: #1f2328; color: #fff; }
-
-.timelapse-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .8rem; color: #656d76; font-size: .8rem; }
-
-.timelapse-bottom .timelapse-player {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+.timelapse-player {padding:20px 22px 16px;background:#fff;
+  .timelapse-now {display:flex;justify-content:space-between;align-items:center;gap:12px;}
+  .timelapse-now>div {display:grid;gap:4px;}
+  .timelapse-kicker {font-size:.68rem;font-weight:800;letter-spacing:.1em;color:#2563eb;}
+  .timelapse-now strong {font-size:1rem;}
+  .timelapse-count {font-size:.82rem;font-variant-numeric:tabular-nums;color:#64748b;background:#f1f5f9;padding:6px 10px;border-radius:999px;}
+  .timeline-range {appearance:none;width:100%;height:7px;border-radius:999px;margin:24px 0 22px;cursor:pointer;background:linear-gradient(to right,#2563eb var(--progress),#e2e8f0 var(--progress));}
+  .timeline-range::-webkit-slider-thumb {appearance:none;width:16px;height:16px;background:#fff;border:4px solid #2563eb;border-radius:50%;box-shadow:0 1px 5px #0002;}
+  .timeline-range::-moz-range-thumb {width:10px;height:10px;background:#fff;border:4px solid #2563eb;border-radius:50%;}
+  .timelapse-controls,.player-transport {display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+  .timelapse-controls {justify-content:space-between;}
+  .player-button {width:36px;height:36px;display:grid;place-items:center;padding:0;border-radius:50%;font-size:1.2rem;}
+  .player-button.secondary {background:#fff;color:#475569;border:1px solid #d0d7de;}
+  .player-button.secondary:hover:not(:disabled) {background:#eff6ff;color:#2563eb;}
+  .player-button.play {width:46px;height:46px;background:#2563eb;color:#fff;box-shadow:0 3px 9px #2563eb33;font-size:1rem;}
+  .player-button.play:hover {background:#1d4ed8;}
+  .player-button:disabled {opacity:.35;cursor:not-allowed;}
+  .speed-controls {display:flex;gap:4px;align-items:center;padding:4px;background:#f1f5f9;border-radius:999px;}
+  .speed-button {font-size:.78rem;color:#64748b;background:transparent;border-radius:999px;padding:7px 10px;}
+  .speed-button:hover {background:#e2e8f0;}
+  .speed-button.active {background:#2563eb;color:#fff;}
+  @media(max-width:520px){padding:16px;.timelapse-controls{gap:16px;}.speed-controls{margin:auto;}}
 }
