@@ -30,6 +30,11 @@ export default function RepositoryPage() {
   const [loadingFrame, setLoadingFrame] = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
   const [fileUnavailable, setFileUnavailable] = useState(false);
+  // A complete, last-known-good file frame remains visible while the next one loads.
+  const [displayedFileFrame, setDisplayedFileFrame] = useState<{
+    path: string; sha: string; change: FileChange | null;
+    after: FileContent | null; before: FileContent | null; unavailable: boolean;
+  } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<RepositoryMetrics | null>(null);
@@ -116,6 +121,7 @@ export default function RepositoryPage() {
   const openFile = useCallback((node: RepositoryTreeNode, explicitChange?: FileChange) => {
     if (node.type === "DIRECTORY") return;
     setSelectedPath(node.path);
+    setDisplayedFileFrame(previous => previous?.path === node.path ? previous : null);
     setSelectedChange(explicitChange ?? null);
   }, []);
 
@@ -125,6 +131,7 @@ export default function RepositoryPage() {
     setFile(null);
     setBeforeFile(null);
     setFileUnavailable(false);
+    setDisplayedFileFrame(null);
   };
 
   useEffect(() => {
@@ -163,7 +170,9 @@ export default function RepositoryPage() {
       if (cancelled) return;
       setFile(after);
       setBeforeFile(before);
-      setFileUnavailable(!after && !before && change?.changeType !== "DELETE");
+      const unavailable = !after && !before && change?.changeType !== "DELETE";
+      setFileUnavailable(unavailable);
+      setDisplayedFileFrame({path: effectivePath, sha: selected.sha, change, after, before, unavailable});
     }).finally(() => {
       if (!cancelled) setLoadingFile(false);
     });
@@ -269,19 +278,22 @@ export default function RepositoryPage() {
                   <div><h2>{selectedPath}</h2><p className="muted">File viewer</p></div>
                   {selectedPath && <button type="button" className="secondary-button clear-file" onClick={backToTree}>Back to tree</button>}
                 </div>
-                {(loadingFrame || loadingFile || detail?.sha !== selected?.sha) ? <p className="muted">Loading this file at the selected commit…</p>
-                : selectedChange ? (
-                  <>
-                    <p className="muted"><strong>{selectedChange.changeType}</strong> · +{selectedChange.additions} / -{selectedChange.deletions}
-                    {selectedChange.changeType === "RENAME" && selectedChange.oldPath ? ` · from ${selectedChange.oldPath}` : ""}</p>
-                    <FileDiff change={selectedChange} beforeContent={beforeFile?.content} afterContent={file?.content} />
-                  </>
-                ) : file ? (
-                  <><p className="muted">Unchanged in this commit · {file.size} bytes · {file.commitSha.slice(0, 12)}</p>
-                  <FileDiff content={file.content} binary={file.binary} /></>
-                ) : fileUnavailable ? (
-                  <div className="file-unavailable"><h3>File unavailable at this commit</h3><p className="muted">Playback will continue and the file will appear when it exists.</p></div>
-                ) : <p className="muted">No file content at this commit.</p>}
+                {displayedFileFrame?.path === selectedPath ? (
+                  <div className="file-frame-content" aria-busy={loadingFrame || loadingFile || displayedFileFrame.sha !== selected?.sha}>
+                    {displayedFileFrame.change ? (
+                      <>
+                        <p className="muted"><strong>{displayedFileFrame.change.changeType}</strong> · +{displayedFileFrame.change.additions} / -{displayedFileFrame.change.deletions}
+                        {displayedFileFrame.change.changeType === "RENAME" && displayedFileFrame.change.oldPath ? ` · from ${displayedFileFrame.change.oldPath}` : ""}</p>
+                        <FileDiff change={displayedFileFrame.change} beforeContent={displayedFileFrame.before?.content} afterContent={displayedFileFrame.after?.content} />
+                      </>
+                    ) : displayedFileFrame.after ? (
+                      <><p className="muted">Unchanged in this commit · {displayedFileFrame.after.size} bytes · {displayedFileFrame.after.commitSha.slice(0, 12)}</p>
+                      <FileDiff content={displayedFileFrame.after.content} binary={displayedFileFrame.after.binary} /></>
+                    ) : displayedFileFrame.unavailable ? (
+                      <div className="file-unavailable"><h3>File unavailable at this commit</h3><p className="muted">Playback will continue and the file will appear when it exists.</p></div>
+                    ) : <p className="muted">No file content at this commit.</p>}
+                  </div>
+                ) : <p className="muted">{loadingFrame || loadingFile ? "Loading selected file…" : "Preparing file viewer…"}</p>}
               </div>}
               </div>
             </section>

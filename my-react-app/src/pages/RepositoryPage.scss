@@ -76,3 +76,7 @@
 /* Expanded analytics are still the original MetricsExplorer component. */
 .metrics-details-anchor {scroll-margin-top:20px;}
 @media(prefers-reduced-motion:reduce){.metrics-details-anchor {scroll-behavior:auto;}}
+
+/* Keep the existing diff mounted while the next commit's file data resolves. */
+.file-frame-content { min-width:0; }
+.file-frame-content[aria-busy="true"] { opacity: 1; }
