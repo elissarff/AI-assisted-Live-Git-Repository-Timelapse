@@ -40,7 +40,7 @@
 
 .legend-delete { background: #ffd7d5; color: #82071e; }
 
-.file-evolution-code { overflow: auto; max-height: 70vh; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; line-height: 20px; }
+.file-evolution-code { overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; line-height: 20px; }
 
 .evolution-line { display: grid; grid-template-columns: 52px 24px minmax(max-content, 1fr); min-height: 20px; white-space: pre; }
 

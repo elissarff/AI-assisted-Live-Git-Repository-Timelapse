@@ -211,31 +211,31 @@ export default function RepositoryPage() {
   return (
     <main className="page extraction-page">
       <section className="extraction-card">
-        <StableHeader repository={repository} syncing={syncing} onSync={sync} />
+        <div className="overview-row">
+          <StableHeader repository={repository} syncing={syncing} onSync={sync} />
+          {metrics && (
+            <section className="card metrics-panel" aria-label="Repository metrics">
+              <div className="metrics-heading">
+                <div><h2>Repository metrics</h2><p className="muted">A quick look at your repository</p></div>
+                <button type="button" className="secondary-button" onClick={() => setMetricsOpen(v => !v)}>{metricsOpen ? "Hide details" : "Explore metrics"}</button>
+              </div>
+              <div className="metric-cards">
+                <div><strong>{metrics.totalCommits.toLocaleString()}</strong><span>Commits</span></div>
+                <div><strong>{metrics.contributorCount.toLocaleString()}</strong><span>Contributors</span></div>
+                <div><strong>{metrics.repositoryAgeDays.toLocaleString()}d</strong><span>Repository age</span></div>
+                <div><strong>{metrics.codeChurn.toLocaleString()}</strong><span>Code churn</span></div>
+                <div><strong>+{metrics.totalAdditions.toLocaleString()}</strong><span>Lines added</span></div>
+                <div><strong>-{metrics.totalDeletions.toLocaleString()}</strong><span>Lines removed</span></div>
+              </div>
+            </section>
+          )}
+        </div>
 
         {error && <p className="error">{error}</p>}
         {!repository && !error && <p>Loading repository...</p>}
 
         {repository && (
           <>
-            {metrics && (
-              <section className="card metrics-panel">
-                <div className="metrics-heading">
-                  <div><h2>Repository metrics</h2><p className="muted">Git-derived evolution metrics only. no LLM analysis.</p></div>
-                  <button type="button" className="secondary-button" onClick={() => setMetricsOpen(v => !v)}>{metricsOpen ? "Hide details" : "Explore metrics"}</button>
-                </div>
-                <div className="metric-cards">
-                  <div><strong>{metrics.totalCommits.toLocaleString()}</strong><span>Commits</span></div>
-                  <div><strong>{metrics.contributorCount.toLocaleString()}</strong><span>Contributors</span></div>
-                  <div><strong>{metrics.repositoryAgeDays.toLocaleString()}d</strong><span>Repository age</span></div>
-                  <div><strong>{metrics.codeChurn.toLocaleString()}</strong><span>Code churn</span></div>
-                  <div><strong>+{metrics.totalAdditions.toLocaleString()}</strong><span>Lines added</span></div>
-                  <div><strong>-{metrics.totalDeletions.toLocaleString()}</strong><span>Lines removed</span></div>
-                </div>
-
-              </section>
-            )}
-            {metrics && metricsOpen && <MetricsExplorer metrics={metrics} onClose={() => setMetricsOpen(false)} />}
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
                 commits={commits}
@@ -284,8 +284,7 @@ export default function RepositoryPage() {
               </div>}
               </div>
             </section>
-
-            
+            {metrics && metricsOpen && <MetricsExplorer metrics={metrics} onClose={() => setMetricsOpen(false)} />}
           </>
         )}
       </section>
