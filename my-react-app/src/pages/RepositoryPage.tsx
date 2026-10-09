@@ -211,10 +211,14 @@ export default function RepositoryPage() {
   return (
     <main className="page extraction-page">
       <section className="extraction-card">
+        <div style={{padding: "20px"}}>
+          <Link className="repository-back" to="/repositories">← Back to repositories</Link> 
+        </div>
         <div className="overview-row">
+          
           <StableHeader repository={repository} syncing={syncing} onSync={sync} />
           {metrics && (
-            <section className="card metrics-panel" aria-label="Repository metrics">
+            <section className="card metrics-panel" aria-label="Repository metrics" style={{backgroundColor: "#f8fafc"}}>
               <div className="metrics-heading">
                 <div><h2>Repository metrics</h2><p className="muted">A quick look at your repository</p></div>
                 <button type="button" className="secondary-button" onClick={() => setMetricsOpen(v => !v)}>{metricsOpen ? "Hide details" : "Explore metrics"}</button>

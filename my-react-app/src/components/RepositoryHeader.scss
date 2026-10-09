@@ -1,7 +1,7 @@
 .repository-header {
   display:grid; gap:14px;
   .repository-back { width:fit-content; font-size:.84rem; color:#64748b; text-decoration:none; &:hover {color:#2563eb;} }
-  .repository-header-row {display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px;}
+  .repository-header-row {display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:18px; flex-direction: column;}
   .repository-identity {display:flex; align-items:center; gap:14px; min-width:0;}
   .repository-icon {width:46px;height:46px;border-radius:12px;background:#dbeafe;color:#2563eb;display:grid;place-items:center;font-size:2rem;flex-shrink:0;}
   h1 {font-size:clamp(1.6rem,2.6vw,2.25rem);letter-spacing:-.04em;margin:0;}

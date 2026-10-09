@@ -5,7 +5,6 @@ import "./RepositoryHeader.scss";
 type Props = { repository: Repository | null; syncing: boolean; onSync: () => void };
 export default function RepositoryHeader({ repository, syncing, onSync }: Props) {
   return <header className="card repository-header">
-    <Link className="repository-back" to="/repositories">← Back to repositories</Link>
     <div className="repository-header-row">
       <div className="repository-identity">
         <span className="repository-icon" aria-hidden="true">⑂</span>
