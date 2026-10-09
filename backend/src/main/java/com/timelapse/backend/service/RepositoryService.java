@@ -16,6 +16,7 @@ import com.timelapse.backend.dto.CommitDetailDto;
 import com.timelapse.backend.dto.FileContentDto;
 import com.timelapse.backend.dto.RegisteredRepositoryDto;
 import com.timelapse.backend.dto.RepositoryInfoDto;
+import com.timelapse.backend.dto.RepositoryMetricsDto;
 import com.timelapse.backend.dto.RepositoryTreeDto;
 import com.timelapse.backend.dto.SyncResultDto;
 import com.timelapse.backend.entity.GitHubInstallationEntity;
@@ -128,6 +129,11 @@ public class RepositoryService {
         String headSha = gitMiningService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
         if (headSha == null) return List.of();
         return gitMiningService.getAllCommits(gitDirectory, headSha);
+    }
+
+    public RepositoryMetricsDto getRepositoryMetrics(String id) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        return gitMiningService.getRepositoryMetrics(Path.of(repository.getLocalGitDirectory()), repository.getDefaultBranch());
     }
 
     /** Returns the Git-derived details required by the commit detail view. */

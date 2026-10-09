@@ -69,3 +69,19 @@ export type FileContent = {
   binary: boolean;
   content: string | null;
 };
+
+export type RepositoryMetrics = {
+  totalCommits: number;
+  contributorCount: number;
+  firstCommitAt: string | null;
+  lastCommitAt: string | null;
+  repositoryAgeDays: number;
+  totalAdditions: number;
+  totalDeletions: number;
+  codeChurn: number;
+  activityOverTime: Array<{ period: string; commits: number; additions: number; deletions: number; churn: number }>;
+  contributors: Array<{ name: string; commits: number; additions: number; deletions: number; churn: number }>;
+  files: Array<{ path: string; changes: number; additions: number; deletions: number; churn: number; contributorCount: number; hotspotScore: number }>;
+  directories: Array<{ path: string; changes: number; additions: number; deletions: number; churn: number }>;
+  filesChangedTogether: Array<{ firstPath: string; secondPath: string; commitsTogether: number }>;
+};

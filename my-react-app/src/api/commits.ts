@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { Commit, CommitDetail, FileContent, RepositoryTree } from "../types/git";
+import type { Commit, CommitDetail, FileContent, RepositoryTree, RepositoryMetrics } from "../types/git";
 
 const base = (repositoryId: string) =>
   `/api/repositories/${encodeURIComponent(repositoryId)}/commits`;
@@ -24,4 +24,8 @@ export function getFile(
   return api.get<FileContent>(
     `${base(repositoryId)}/${encodeURIComponent(sha)}/file?path=${encodeURIComponent(path)}`
   );
+}
+
+export function getMetrics(repositoryId: string): Promise<RepositoryMetrics> {
+  return api.get<RepositoryMetrics>(`${base(repositoryId)}/metrics`);
 }

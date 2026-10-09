@@ -14,6 +14,7 @@ import com.timelapse.backend.dto.CommitDetailDto;
 import com.timelapse.backend.dto.CommitDto;
 import com.timelapse.backend.dto.FileContentDto;
 import com.timelapse.backend.dto.RepositoryTreeDto;
+import com.timelapse.backend.dto.RepositoryMetricsDto;
 import com.timelapse.backend.service.RepositoryService;
 
 /**
@@ -41,6 +42,12 @@ public class CommitController {
     @GetMapping
     public List<CommitDto> timeline(@PathVariable String repositoryId) throws Exception {
         return repositoryService.getTimeline(repositoryId);
+    }
+
+    /** Repository-level metrics derived entirely from Git; no LLM data is used. */
+    @GetMapping("/metrics")
+    public RepositoryMetricsDto metrics(@PathVariable String repositoryId) throws Exception {
+        return repositoryService.getRepositoryMetrics(repositoryId);
     }
 
     /**

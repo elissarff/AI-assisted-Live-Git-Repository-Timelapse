@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
-import { getCommit, getCommits, getFile, getTree } from "../api/commits";
+import { getCommit, getCommits, getFile, getTree, getMetrics } from "../api/commits";
 import RepositoryTree from "../components/RepositoryTree";
 import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
 import type { Repository } from "../types/repository";
-import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode } from "../types/git";
+import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
 
 const BASE_PLAY_INTERVAL_MS = 1200;
 
@@ -28,6 +28,8 @@ export default function RepositoryPage() {
   const [fileUnavailable, setFileUnavailable] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<RepositoryMetrics | null>(null);
+  const [metricsOpen, setMetricsOpen] = useState(false);
 
   const selected = commits[index] ?? null;
 
@@ -48,11 +50,12 @@ export default function RepositoryPage() {
       return;
     }
     setError(null);
-    Promise.all([getRepository(repoKey), getCommits(repoKey)])
-      .then(([repo, history]) => {
+    Promise.all([getRepository(repoKey), getCommits(repoKey), getMetrics(repoKey)])
+      .then(([repo, history, repositoryMetrics]) => {
         setRepository(repo as Repository);
         setCommits(history);
         setIndex(history.length ? history.length - 1 : 0);
+        setMetrics(repositoryMetrics);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load repository."));
   }, [repoKey]);
@@ -165,6 +168,7 @@ export default function RepositoryPage() {
       const repo = await getRepository(repoKey);
       setRepository(repo as Repository);
       await loadHistory(repoKey, repo.headSha);
+      setMetrics(await getMetrics(repoKey));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not synchronize repository.");
     } finally {
@@ -191,6 +195,31 @@ export default function RepositoryPage() {
             </div>
 
             <hr />
+            {metrics && (
+              <section className="metrics-panel">
+                <div className="metrics-heading">
+                  <div><h2>Repository metrics</h2><p className="muted">Git-derived evolution metrics only. no LLM analysis.</p></div>
+                  <button type="button" className="secondary-button" onClick={() => setMetricsOpen(v => !v)}>{metricsOpen ? "Hide details" : "Explore metrics"}</button>
+                </div>
+                <div className="metric-cards">
+                  <div><strong>{metrics.totalCommits.toLocaleString()}</strong><span>Commits</span></div>
+                  <div><strong>{metrics.contributorCount.toLocaleString()}</strong><span>Contributors</span></div>
+                  <div><strong>{metrics.repositoryAgeDays.toLocaleString()}d</strong><span>Repository age</span></div>
+                  <div><strong>{metrics.codeChurn.toLocaleString()}</strong><span>Code churn</span></div>
+                  <div><strong>+{metrics.totalAdditions.toLocaleString()}</strong><span>Lines added</span></div>
+                  <div><strong>-{metrics.totalDeletions.toLocaleString()}</strong><span>Lines removed</span></div>
+                </div>
+                {metricsOpen && (
+                  <div className="metrics-grid">
+                    <div className="metric-table-wrap"><h3>Activity over time</h3><table className="metric-table"><thead><tr><th>Month</th><th>Commits</th><th>Churn</th></tr></thead><tbody>{metrics.activityOverTime.map(x => <tr key={x.period}><td>{x.period}</td><td>{x.commits}</td><td>+{x.additions} / -{x.deletions}</td></tr>)}</tbody></table></div>
+                    <div className="metric-table-wrap"><h3>Contributor activity</h3><table className="metric-table"><thead><tr><th>Contributor</th><th>Commits</th><th>Churn</th></tr></thead><tbody>{metrics.contributors.slice(0,15).map(x => <tr key={x.name}><td>{x.name}</td><td>{x.commits}</td><td>{x.churn.toLocaleString()}</td></tr>)}</tbody></table></div>
+                    <div className="metric-table-wrap"><h3>Frequently changed files / hotspots</h3><table className="metric-table"><thead><tr><th>File</th><th>Changes</th><th>Contributors</th><th>Churn</th></tr></thead><tbody>{metrics.files.slice(0,20).map(x => <tr key={x.path}><td><code>{x.path}</code></td><td>{x.changes}</td><td>{x.contributorCount}</td><td>{x.churn.toLocaleString()}</td></tr>)}</tbody></table></div>
+                    <div className="metric-table-wrap"><h3>Frequently changing directories</h3><table className="metric-table"><thead><tr><th>Directory</th><th>Changes</th><th>Churn</th></tr></thead><tbody>{metrics.directories.slice(0,20).map(x => <tr key={x.path}><td><code>{x.path}</code></td><td>{x.changes}</td><td>{x.churn.toLocaleString()}</td></tr>)}</tbody></table></div>
+                    <div className="metric-table-wrap metric-wide"><h3>Files changed together</h3><table className="metric-table"><thead><tr><th>File A</th><th>File B</th><th>Commits together</th></tr></thead><tbody>{metrics.filesChangedTogether.slice(0,20).map((x,i) => <tr key={`${x.firstPath}-${x.secondPath}-${i}`}><td><code>{x.firstPath}</code></td><td><code>{x.secondPath}</code></td><td>{x.commitsTogether}</td></tr>)}</tbody></table></div>
+                  </div>
+                )}
+              </section>
+            )}
             <section className="timelapse-bottom">
               <TimeLine
                 commits={commits}

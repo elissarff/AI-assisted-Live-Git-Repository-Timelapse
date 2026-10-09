@@ -14,6 +14,7 @@ import com.timelapse.backend.dto.AuthorDto;
 import com.timelapse.backend.dto.CommitDetailDto;
 import com.timelapse.backend.dto.CommitDto;
 import com.timelapse.backend.dto.FileContentDto;
+import com.timelapse.backend.dto.RepositoryMetricsDto;
 import com.timelapse.backend.dto.RepositoryTreeDto;
 
 @Service
@@ -23,14 +24,16 @@ public class GitMiningService {
     private final GitDiffService diffs;
     private final GitFileService files;
     private final GitTreeService trees;
+    private final GitMetricsService metrics;
 
     public GitMiningService(GitRepositoryService repositories, GitCommitService commits,
-                            GitDiffService diffs, GitFileService files, GitTreeService trees) {
+                            GitDiffService diffs, GitFileService files, GitTreeService trees, GitMetricsService metrics) {
         this.repositories = repositories;
         this.commits = commits;
         this.diffs = diffs;
         this.files = files;
         this.trees = trees;
+        this.metrics = metrics;
     }
 
     public String getRemoteBranchHead(Path gitDirectory, String branch) throws Exception {
@@ -99,6 +102,13 @@ public class GitMiningService {
              RevWalk walk = new RevWalk(repository)) {
             RevCommit commit = commits.parseCommit(repository, walk, commitSha);
             return files.getFileContent(repository, commit, filePath);
+        }
+    }
+
+    public RepositoryMetricsDto getRepositoryMetrics(Path gitDirectory, String branch) throws Exception {
+        try (Repository repository = repositories.openRepository(gitDirectory)) {
+            ObjectId branchHead = repositories.resolveBranch(repository, branch);
+            return metrics.calculate(repository, branchHead);
         }
     }
 
