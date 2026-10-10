@@ -267,7 +267,12 @@ export default function RepositoryPage() {
               <div className="card workspace-tree">
                 <div className="viewport-heading">
                   <div><h2>Repository tree</h2><p className="muted">Select a file to follow across commits.</p></div>
-                  <div className="tree-heading-actions">{loadingFrame && <span className="muted">Updating…</span>}{selectedPath && <button type="button" className="tree-collapse" onClick={()=>updateTreeWidth(0)} title="Hide repository tree">«</button>}</div>
+                  <div className="tree-heading-actions">
+                    {loadingFrame && <span className="muted">Updating…</span>}
+                    {selectedPath && <button type="button" className="tree-collapse" onClick={()=>updateTreeWidth(0)} title="Hide repository tree">«</button>}
+
+                    {selectedPath && <button type="button" className="tree-collapse" onClick={backToTree} title="Back to tree">»</button>}
+                  </div>
                 </div>
                 {tree ? (
                   <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} />
