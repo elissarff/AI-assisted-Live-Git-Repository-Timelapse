@@ -284,11 +284,11 @@ export default function RepositoryPage() {
                       <>
                         <p className="muted"><strong>{displayedFileFrame.change.changeType}</strong> · +{displayedFileFrame.change.additions} / -{displayedFileFrame.change.deletions}
                         {displayedFileFrame.change.changeType === "RENAME" && displayedFileFrame.change.oldPath ? ` · from ${displayedFileFrame.change.oldPath}` : ""}</p>
-                        <FileDiff change={displayedFileFrame.change} beforeContent={displayedFileFrame.before?.content} afterContent={displayedFileFrame.after?.content} />
+                        <FileDiff path={selectedPath ?? undefined} change={displayedFileFrame.change} beforeContent={displayedFileFrame.before?.content} afterContent={displayedFileFrame.after?.content} />
                       </>
                     ) : displayedFileFrame.after ? (
                       <><p className="muted">Unchanged in this commit · {displayedFileFrame.after.size} bytes · {displayedFileFrame.after.commitSha.slice(0, 12)}</p>
-                      <FileDiff content={displayedFileFrame.after.content} binary={displayedFileFrame.after.binary} /></>
+                      <FileDiff path={selectedPath ?? undefined} content={displayedFileFrame.after.content} binary={displayedFileFrame.after.binary} /></>
                     ) : displayedFileFrame.unavailable ? (
                       <div className="file-unavailable"><h3>File unavailable at this commit</h3><p className="muted">Playback will continue and the file will appear when it exists.</p></div>
                     ) : <p className="muted">No file content at this commit.</p>}
