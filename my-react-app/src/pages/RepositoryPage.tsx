@@ -51,7 +51,7 @@ export default function RepositoryPage() {
 
   const workspaceRef = useRef<HTMLElement>(null);
   const dragStart = useRef<{x:number;width:number;total:number}|null>(null);
-  const [treeWidth,setTreeWidth] = useState(18);
+  const [treeWidth,setTreeWidth] = useState(25);
   const [treeHidden,setTreeHidden] = useState(false);
   const treeWidthRef = useRef(treeWidth);
   const frameCache = useRef(new Map<string,{detail:CommitDetail;tree:Tree}>());
@@ -126,6 +126,7 @@ export default function RepositoryPage() {
   }, []);
 
   const backToTree = () => {
+    updateTreeWidth(treeWidthRef.current || 25);
     setSelectedPath(null);
     setSelectedChange(null);
     setFile(null);
@@ -261,12 +262,12 @@ export default function RepositoryPage() {
             </section>
 
             <section ref={workspaceRef} className={`workspace-resizable ${!selectedPath ? "tree-only" : ""} ${treeHidden ? "tree-hidden" : ""}`} style={{"--tree-width":`${treeWidth}%`} as React.CSSProperties}>
-              {treeHidden && <button type="button" className="restore-tree" onClick={()=>updateTreeWidth(18)}>☰ Show repository tree</button>}
+              {treeHidden && selectedPath && <button type="button" className="restore-tree" onClick={()=>updateTreeWidth(25)}>☰ Show repository tree</button>}
               <div className="workspace-columns">
               <div className="card workspace-tree">
                 <div className="viewport-heading">
                   <div><h2>Repository tree</h2><p className="muted">Select a file to follow across commits.</p></div>
-                  <div className="tree-heading-actions">{loadingFrame && <span className="muted">Updating…</span>}<button type="button" className="tree-collapse" onClick={()=>updateTreeWidth(0)} title="Hide repository tree">«</button></div>
+                  <div className="tree-heading-actions">{loadingFrame && <span className="muted">Updating…</span>}{selectedPath && <button type="button" className="tree-collapse" onClick={()=>updateTreeWidth(0)} title="Hide repository tree">«</button>}</div>
                 </div>
                 {tree ? (
                   <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} />

@@ -80,7 +80,7 @@ function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth =
               disabled={node.type === "SUBMODULE"}
               title={node.path}
             >
-              <span className="file-icon" aria-hidden="true">•</span> {node.name}
+              <span className="file-icon" aria-hidden="true">•</span><span className="file-name">{node.name}</span>
               {change && <span className={`change-badge ${changeClass}`}>{change.changeType}</span>}
             </button>
           )}

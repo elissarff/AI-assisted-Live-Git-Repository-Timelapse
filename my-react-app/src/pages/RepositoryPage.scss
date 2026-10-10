@@ -69,8 +69,6 @@
 .workspace-tree,
 .workspace-diff {
   height: auto;
-  max-height: none;
-  min-height: 1100px;
   overflow-y: visible;
 }
 /* Expanded analytics are still the original MetricsExplorer component. */
@@ -80,3 +78,62 @@
 /* Keep the existing diff mounted while the next commit's file data resolves. */
 .file-frame-content { min-width:0; }
 .file-frame-content[aria-busy="true"] { opacity: 1; }
+
+/* Let the tallest visible panel determine the workspace height, without
+   stretching the shorter card or painting its unused space white. */
+.workspace-resizable .workspace-columns { align-items: start; }
+.workspace-resizable .workspace-tree,
+.workspace-resizable .workspace-diff {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  align-self: start;
+  overflow: visible;
+}
+.workspace-resizable.tree-only .workspace-columns { display: block; }
+.workspace-resizable.tree-hidden .workspace-columns { align-items: start; }
+.workspace-resizable.tree-hidden .workspace-tree { display: none; }
+.workspace-resizable.tree-hidden .workspace-resize-handle { display: none; }
+.workspace-resizable.tree-hidden .workspace-columns { display: block; }
+.workspace-resizable.tree-hidden .workspace-diff { width: 100%; }
+
+/* Long paths and code should never expand either grid column. */
+.workspace-resizable .workspace-columns > * { min-width:0; }
+.workspace-resizable .viewport-heading { min-width:0; }
+.workspace-resizable .viewport-heading > div { min-width:0; }
+.workspace-resizable .viewport-heading h2 { overflow-wrap:anywhere; }
+.workspace-resizable .workspace-tree,
+.workspace-resizable .workspace-diff { overflow-x:hidden; }
+.workspace-resizable .code-viewer-scroll { max-width:100%; overflow-x:auto; }
+
+/* Full-height resize hit target, independent of each card's content height.
+   The grid row is sized by its tallest card; only the divider stretches. */
+@media (min-width: 761px) {
+  .workspace-resizable:not(.tree-only):not(.tree-hidden) .workspace-columns {
+    display: grid;
+    align-items: stretch;
+  }
+  .workspace-resizable:not(.tree-only):not(.tree-hidden) .workspace-tree,
+  .workspace-resizable:not(.tree-only):not(.tree-hidden) .workspace-diff {
+    align-self: start;
+  }
+  .workspace-resizable:not(.tree-only):not(.tree-hidden) .workspace-resize-handle {
+    align-self: stretch;
+    height: 100%;
+    min-height: 100%;
+    position: relative;
+    cursor: col-resize;
+    user-select: none;
+    z-index: 2;
+  }
+  .workspace-resizable:not(.tree-only):not(.tree-hidden) .workspace-resize-handle::before {
+    content: "";
+    position: absolute;
+    inset: 0 -5px;
+  }
+  .workspace-resizable:not(.tree-only):not(.tree-hidden) .workspace-resize-handle span {
+    position: sticky;
+    top: 16px;
+    pointer-events: none;
+  }
+}

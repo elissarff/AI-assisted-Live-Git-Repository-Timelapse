@@ -53,3 +53,11 @@
 @media (prefers-reduced-motion: reduce)  { .tree-row.change-add, .tree-row.change-modify, .tree-row.change-rename, .tree-row.change-copy, .tree-row.change-delete { animation: none; } }
 
 .deleted-file { width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
+
+/* Keep deeply nested filenames and status pills inside the tree card. */
+.tree-row { min-width:0; max-width:100%; box-sizing:border-box; }
+.tree-row .file-link { min-width:0; max-width:100%; overflow:hidden; box-sizing:border-box; }
+.tree-row .file-link .file-name { min-width:0; flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tree-row .file-icon, .tree-row .change-badge { flex-shrink:0; }
+.tree-row .change-badge { white-space:nowrap; }
+.tree-row .directory-label { min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
