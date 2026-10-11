@@ -303,7 +303,7 @@ export default function RepositoryPage() {
               </div>}
               </div>
             </section>
-            {metrics && metricsOpen && <div ref={metricsSectionRef} className="metrics-details-anchor"><MetricsExplorer metrics={metrics} onClose={() => setMetricsOpen(false)} /></div>}
+            {metrics && metricsOpen && <div ref={metricsSectionRef} className="metrics-details-anchor"><MetricsExplorer metrics={metrics} commits={commits} onClose={() => setMetricsOpen(false)} /></div>}
           </>
         )}
       </section>
