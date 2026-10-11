@@ -26,20 +26,29 @@ import com.timelapse.backend.dto.RepositoryMetricsDto.DirectoryMetricDto;
 import com.timelapse.backend.dto.RepositoryMetricsDto.FileMetricDto;
 import com.timelapse.backend.dto.RepositoryMetricsDto.FilePairMetricDto;
 
-/** Calculates deterministic repository-evolution metrics directly from Git. */
+/**
+ * Calculates deterministic repository-evolution metrics directly from Git.
+ */
 @Service
 public class GitMetricsService {
+
     private static final DateTimeFormatter MONTH = DateTimeFormatter.ofPattern("yyyy-MM").withZone(ZoneOffset.UTC);
     private final GitDiffService diffs;
 
-    public GitMetricsService(GitDiffService diffs) { this.diffs = diffs; }
+    public GitMetricsService(GitDiffService diffs) {
+        this.diffs = diffs;
+    }
 
     public RepositoryMetricsDto calculate(Repository repository, ObjectId branchHead) throws Exception {
-        if (branchHead == null) return empty();
+        if (branchHead == null) {
+            return empty();
+        }
         List<RevCommit> commits = new ArrayList<>();
         try (RevWalk walk = new RevWalk(repository)) {
             walk.markStart(walk.parseCommit(branchHead));
-            for (RevCommit commit : walk) commits.add(commit);
+            for (RevCommit commit : walk) {
+                commits.add(commit);
+            }
         }
         commits.sort(Comparator.comparing(c -> c.getAuthorIdent().getWhenAsInstant()));
 
@@ -53,7 +62,8 @@ public class GitMetricsService {
         for (RevCommit commit : commits) {
             var result = diffs.getFileChanges(repository, commit);
             long add = result.additions(), del = result.deletions();
-            totalAdd += add; totalDelete += del;
+            totalAdd += add;
+            totalDelete += del;
             String author = commit.getAuthorIdent().getName();
             String period = MONTH.format(commit.getAuthorIdent().getWhenAsInstant());
             activity.computeIfAbsent(period, k -> new MutableActivity()).add(add, del);
@@ -62,7 +72,9 @@ public class GitMetricsService {
             Set<String> paths = new HashSet<>();
             for (FileChangeDto change : result.files()) {
                 String path = change.newPath() != null && !"/dev/null".equals(change.newPath()) ? change.newPath() : change.oldPath();
-                if (path == null || "/dev/null".equals(path)) continue;
+                if (path == null || "/dev/null".equals(path)) {
+                    continue;
+                }
                 paths.add(path);
                 files.computeIfAbsent(path, k -> new MutableFile()).add(author, change.additions(), change.deletions());
                 String directory = directoryOf(path);
@@ -70,12 +82,15 @@ public class GitMetricsService {
             }
             List<String> changed = new ArrayList<>(paths);
             changed.sort(String::compareTo);
-            for (int i = 0; i < changed.size(); i++) for (int j = i + 1; j < changed.size(); j++)
-                pairs.merge(changed.get(i) + "\u0000" + changed.get(j), 1, Integer::sum);
+            for (int i = 0; i < changed.size(); i++) {
+                for (int j = i + 1; j < changed.size(); j++) {
+                    pairs.merge(changed.get(i) + "\u0000" + changed.get(j), 1, Integer::sum);
+                }
+            }
         }
 
         Instant first = commits.isEmpty() ? null : commits.get(0).getAuthorIdent().getWhenAsInstant();
-        Instant last = commits.isEmpty() ? null : commits.get(commits.size()-1).getAuthorIdent().getWhenAsInstant();
+        Instant last = commits.isEmpty() ? null : commits.get(commits.size() - 1).getAuthorIdent().getWhenAsInstant();
         long age = first == null || last == null ? 0 : Duration.between(first, last).toDays();
 
         List<ActivityPointDto> activityDtos = activity.entrySet().stream().sorted(Map.Entry.comparingByKey())
@@ -87,18 +102,87 @@ public class GitMetricsService {
         List<DirectoryMetricDto> directoryDtos = directories.entrySet().stream().map(e -> e.getValue().dto(e.getKey()))
                 .sorted(Comparator.comparingInt(DirectoryMetricDto::changes).reversed()).toList();
         List<FilePairMetricDto> pairDtos = pairs.entrySet().stream().filter(e -> e.getValue() > 1).map(e -> {
-            String[] p = e.getKey().split("\u0000", 2); return new FilePairMetricDto(p[0], p[1], e.getValue());
+            String[] p = e.getKey().split("\u0000", 2);
+            return new FilePairMetricDto(p[0], p[1], e.getValue());
         }).sorted(Comparator.comparingInt(FilePairMetricDto::commitsTogether).reversed()).limit(100).toList();
 
         return new RepositoryMetricsDto(commits.size(), contributors.size(), first, last, age, totalAdd, totalDelete,
                 totalAdd + totalDelete, activityDtos, contributorDtos, fileDtos, directoryDtos, pairDtos);
     }
 
-    private RepositoryMetricsDto empty() { return new RepositoryMetricsDto(0,0,null,null,0,0,0,0,List.of(),List.of(),List.of(),List.of(),List.of()); }
-    private String directoryOf(String path) { int slash = path.lastIndexOf('/'); return slash < 0 ? "(root)" : path.substring(0, slash); }
+    private RepositoryMetricsDto empty() {
+        return new RepositoryMetricsDto(0, 0, null, null, 0, 0, 0, 0, List.of(), List.of(), List.of(), List.of(), List.of());
+    }
 
-    private static class MutableActivity { int commits; long add, del; void add(long a,long d){commits++;add+=a;del+=d;} ActivityPointDto dto(String p){return new ActivityPointDto(p,commits,add,del,add+del);} }
-    private static class MutableContributor { int commits; long add, del; void add(long a,long d){commits++;add+=a;del+=d;} ContributorMetricDto dto(String n){return new ContributorMetricDto(n,commits,add,del,add+del);} }
-    private static class MutableFile { int changes; long add, del; Set<String> contributors=new HashSet<>(); void add(String c,long a,long d){changes++;add+=a;del+=d;contributors.add(c);} FileMetricDto dto(String p){double score=changes*Math.log1p(add+del);return new FileMetricDto(p,changes,add,del,add+del,contributors.size(),score);} }
-    private static class MutableDirectory { int changes; long add, del; void add(long a,long d){changes++;add+=a;del+=d;} DirectoryMetricDto dto(String p){return new DirectoryMetricDto(p,changes,add,del,add+del);} }
+    private String directoryOf(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? "(root)" : path.substring(0, slash);
+    }
+
+    private static class MutableActivity {
+
+        int commits;
+        long add, del;
+
+        void add(long a, long d) {
+            commits++;
+            add += a;
+            del += d;
+        }
+
+        ActivityPointDto dto(String p) {
+            return new ActivityPointDto(p, commits, add, del, add + del);
+        }
+    }
+
+    private static class MutableContributor {
+
+        int commits;
+        long add, del;
+
+        void add(long a, long d) {
+            commits++;
+            add += a;
+            del += d;
+        }
+
+        ContributorMetricDto dto(String n) {
+            return new ContributorMetricDto(n, commits, add, del, add + del);
+        }
+    }
+
+    private static class MutableFile {
+
+        int changes;
+        long add, del;
+        Set<String> contributors = new HashSet<>();
+
+        void add(String c, long a, long d) {
+            changes++;
+            add += a;
+            del += d;
+            contributors.add(c);
+        }
+
+        FileMetricDto dto(String p) {
+            double score = changes * Math.log1p(add + del);
+            return new FileMetricDto(p, changes, add, del, add + del, contributors.size(), score);
+        }
+    }
+
+    private static class MutableDirectory {
+
+        int changes;
+        long add, del;
+
+        void add(long a, long d) {
+            changes++;
+            add += a;
+            del += d;
+        }
+
+        DirectoryMetricDto dto(String p) {
+            return new DirectoryMetricDto(p, changes, add, del, add + del);
+        }
+    }
 }

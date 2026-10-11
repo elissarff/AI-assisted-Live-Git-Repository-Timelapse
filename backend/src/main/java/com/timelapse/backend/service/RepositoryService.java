@@ -123,17 +123,29 @@ public class RepositoryService {
      * order. Git remains authoritative; commit history is not duplicated in
      * PostgreSQL.
      */
+    public List<String> listBranches(String id) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        return gitMiningService.listBranches(Path.of(repository.getLocalGitDirectory()));
+    }
+
     public List<CommitDto> getTimeline(String id) throws Exception {
+        return getTimeline(id, null);
+    }
+
+    public List<CommitDto> getTimeline(String id, String branch) throws Exception {
         RepositoryEntity repository = requireRepository(id);
         Path gitDirectory = Path.of(repository.getLocalGitDirectory());
-        String headSha = gitMiningService.getRemoteBranchHead(gitDirectory, repository.getDefaultBranch());
+        String selectedBranch = branch == null || branch.isBlank() ? repository.getDefaultBranch() : branch;
+        if (!listBranches(id).contains(selectedBranch)) throw new IllegalArgumentException("Unknown branch: " + selectedBranch);
+        String headSha = gitMiningService.getRemoteBranchHead(gitDirectory, selectedBranch);
         if (headSha == null) return List.of();
         return gitMiningService.getAllCommits(gitDirectory, headSha);
     }
 
-    public RepositoryMetricsDto getRepositoryMetrics(String id) throws Exception {
+    public RepositoryMetricsDto getRepositoryMetrics(String id, String branch) throws Exception {
         RepositoryEntity repository = requireRepository(id);
-        return gitMiningService.getRepositoryMetrics(Path.of(repository.getLocalGitDirectory()), repository.getDefaultBranch());
+        return gitMiningService.getRepositoryMetrics(Path.of(repository.getLocalGitDirectory()),
+                branch == null || branch.isBlank() ? repository.getDefaultBranch() : branch);
     }
 
     /** Returns the Git-derived details required by the commit detail view. */

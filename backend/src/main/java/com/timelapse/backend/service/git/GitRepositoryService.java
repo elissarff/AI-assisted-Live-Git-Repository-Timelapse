@@ -31,7 +31,9 @@ public class GitRepositoryService {
                 .setURI(remoteUrl)
                 .setDirectory(destination.toFile())
                 .setBare(true);
-        if (credentials != null) command.setCredentialsProvider(credentials);
+        if (credentials != null) {
+            command.setCredentialsProvider(credentials);
+        }
         try (Git ignored = command.call()) {
             // Repository is fully cloned before the Git handle is closed.
         }
@@ -52,7 +54,9 @@ public class GitRepositoryService {
     public void fetch(Path gitDirectory, CredentialsProvider credentials) throws Exception {
         try (Repository repository = openRepository(gitDirectory); Git git = new Git(repository)) {
             var command = git.fetch().setRemote("origin");
-            if (credentials != null) command.setCredentialsProvider(credentials);
+            if (credentials != null) {
+                command.setCredentialsProvider(credentials);
+            }
             command.call();
         }
     }
@@ -67,25 +71,49 @@ public class GitRepositoryService {
     public String detectDefaultBranch(Path gitDirectory) throws Exception {
         try (Repository repository = openRepository(gitDirectory)) {
             String branch = repository.getBranch();
-            if (branch != null && !branch.isBlank() && !"HEAD".equals(branch)) return branch;
+            if (branch != null && !branch.isBlank() && !"HEAD".equals(branch)) {
+                return branch;
+            }
             var target = repository.exactRef("HEAD");
             if (target != null && target.isSymbolic() && target.getTarget() != null) {
                 String name = target.getTarget().getName();
-                if (name.startsWith("refs/heads/")) return name.substring("refs/heads/".length());
+                if (name.startsWith("refs/heads/")) {
+                    return name.substring("refs/heads/".length());
+                }
             }
             return "main";
         }
     }
 
+    public java.util.List<String> listBranches(Path gitDirectory) throws Exception {
+        try (Repository repository = openRepository(gitDirectory)) {
+            java.util.Set<String> names = new java.util.TreeSet<>();
+            for (org.eclipse.jgit.lib.Ref ref : repository.getRefDatabase().getRefsByPrefix("refs/heads/")) {
+                names.add(ref.getName().substring("refs/heads/".length()));
+            }
+            for (org.eclipse.jgit.lib.Ref ref : repository.getRefDatabase().getRefsByPrefix("refs/remotes/origin/")) {
+                String name = ref.getName().substring("refs/remotes/origin/".length());
+                if (!name.equals("HEAD")) names.add(name);
+            }
+            return java.util.List.copyOf(names);
+        }
+    }
+
     ObjectId resolveBranch(Repository repository, String branch) throws Exception {
-        if (branch == null || branch.isBlank()) return null;
+        if (branch == null || branch.isBlank()) {
+            return null;
+        }
         ObjectId objectId = repository.resolve("refs/remotes/origin/" + branch);
-        if (objectId == null) objectId = repository.resolve("refs/heads/" + branch);
+        if (objectId == null) {
+            objectId = repository.resolve("refs/heads/" + branch);
+        }
         return objectId;
     }
 
     private CredentialsProvider credentials(String username, String password) {
-        if (username == null || password == null) return null;
+        if (username == null || password == null) {
+            return null;
+        }
         return new UsernamePasswordCredentialsProvider(username, password);
     }
 }

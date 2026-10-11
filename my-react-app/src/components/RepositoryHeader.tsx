@@ -5,6 +5,10 @@ import "./RepositoryHeader.scss";
 
 type Props = {
   repository: Repository | null;
+  branches: string[];
+  branch: string;
+  switchingBranch: boolean;
+  onBranchChange: (branch: string) => void;
   metrics: RepositoryMetrics | null;
   syncing: boolean;
   onSync: () => void;
@@ -12,7 +16,7 @@ type Props = {
   metricsOpen: boolean;
 };
 
-export default function RepositoryHeader({ repository, metrics, syncing, onSync, onExploreMetrics, metricsOpen }: Props) {
+export default function RepositoryHeader({ repository, branches, branch, switchingBranch, onBranchChange, metrics, syncing, onSync, onExploreMetrics, metricsOpen }: Props) {
   const format = (value: number) => value.toLocaleString();
   return <>
     <Link className="repository-back-link" to="/repositories"><span aria-hidden="true">←</span> <span>All repositories</span></Link>
@@ -25,7 +29,18 @@ export default function RepositoryHeader({ repository, metrics, syncing, onSync,
           </div>
           {repository && <>
             <div className="repository-actions">
-              <span className="branch-pill" title="Current branch"><span aria-hidden="true">⑂</span> {repository.branch || "unknown"}</span>
+              <div className="branch-control">
+                <label htmlFor="repository-branch" className="branch-control-label">Branch</label>
+                <div className="branch-select-wrap">
+                  <svg className="branch-select-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="3" r="2"/><path d="M6 5v12"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="6" r="2"/><path d="M18 8a6 6 0 0 1-6 6H6"/></svg>
+                  <select 
+                  style={{width: "auto"}}
+                  id="repository-branch" aria-label="Choose branch" value={branch} disabled={switchingBranch || branches.length === 0} onChange={(event) => onBranchChange(event.target.value)}>
+                    {branches.map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <svg className="branch-select-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+              </div>
               <button type="button" className="sync-action" onClick={onSync} disabled={syncing}><span aria-hidden="true">↻</span> {syncing ? "Syncing…" : "Sync repository"}</button>
             </div>
             <div className="repository-head"><span>HEAD</span> <code title={repository.headSha}>{repository.headSha || "—"}</code></div>

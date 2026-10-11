@@ -36,6 +36,10 @@ public class GitMiningService {
         this.metrics = metrics;
     }
 
+    public java.util.List<String> listBranches(Path gitDirectory) throws Exception {
+        return repositories.listBranches(gitDirectory);
+    }
+
     public String getRemoteBranchHead(Path gitDirectory, String branch) throws Exception {
         return repositories.getRemoteBranchHead(gitDirectory, branch);
     }

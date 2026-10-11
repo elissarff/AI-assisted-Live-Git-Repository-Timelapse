@@ -4,8 +4,12 @@ import type { Commit, CommitDetail, FileContent, RepositoryTree, RepositoryMetri
 const base = (repositoryId: string) =>
   `/api/repositories/${encodeURIComponent(repositoryId)}/commits`;
 
-export function getCommits(repositoryId: string): Promise<Commit[]> {
-  return api.get<Commit[]>(base(repositoryId));
+export function getBranches(repositoryId: string): Promise<string[]> {
+  return api.get<string[]>(`${base(repositoryId)}/branches`);
+}
+
+export function getCommits(repositoryId: string, branch?: string): Promise<Commit[]> {
+  return api.get<Commit[]>(`${base(repositoryId)}${branch ? `?branch=${encodeURIComponent(branch)}` : ""}`);
 }
 
 export function getCommit(repositoryId: string, sha: string): Promise<CommitDetail> {
@@ -26,6 +30,6 @@ export function getFile(
   );
 }
 
-export function getMetrics(repositoryId: string): Promise<RepositoryMetrics> {
-  return api.get<RepositoryMetrics>(`${base(repositoryId)}/metrics`);
+export function getMetrics(repositoryId: string, branch?: string): Promise<RepositoryMetrics> {
+  return api.get<RepositoryMetrics>(`${base(repositoryId)}/metrics${branch ? `?branch=${encodeURIComponent(branch)}` : ""}`);
 }

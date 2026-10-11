@@ -39,15 +39,22 @@ public class CommitController {
      * Complete default-branch history in chronological order (oldest -> newest).
      * This is the primary endpoint used to construct the timelapse scrubber.
      */
+    @GetMapping("/branches")
+    public List<String> branches(@PathVariable String repositoryId) throws Exception {
+        return repositoryService.listBranches(repositoryId);
+    }
+
     @GetMapping
-    public List<CommitDto> timeline(@PathVariable String repositoryId) throws Exception {
-        return repositoryService.getTimeline(repositoryId);
+    public List<CommitDto> timeline(@PathVariable String repositoryId,
+                                    @RequestParam(required = false) String branch) throws Exception {
+        return repositoryService.getTimeline(repositoryId, branch);
     }
 
     /** Repository-level metrics derived entirely from Git; no LLM data is used. */
     @GetMapping("/metrics")
-    public RepositoryMetricsDto metrics(@PathVariable String repositoryId) throws Exception {
-        return repositoryService.getRepositoryMetrics(repositoryId);
+    public RepositoryMetricsDto metrics(@PathVariable String repositoryId,
+                                        @RequestParam(required = false) String branch) throws Exception {
+        return repositoryService.getRepositoryMetrics(repositoryId, branch);
     }
 
     /**

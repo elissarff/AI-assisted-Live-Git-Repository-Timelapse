@@ -2,7 +2,7 @@ import "./RepositoryPage.scss";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
-import { getCommit, getCommits, getFile, getTree, getMetrics } from "../api/commits";
+import { getBranches, getCommit, getCommits, getFile, getTree, getMetrics } from "../api/commits";
 import RepositoryTree from "../components/RepositoryTree";
 import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
@@ -18,6 +18,9 @@ export default function RepositoryPage() {
   const { repoKey } = useParams();
   const [repository, setRepository] = useState<Repository | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branch, setBranch] = useState("");
+  const [switchingBranch, setSwitchingBranch] = useState(false);
   const [index, setIndex] = useState(0);
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const [tree, setTree] = useState<Tree | null>(null);
@@ -59,7 +62,7 @@ export default function RepositoryPage() {
   const selected = commits[index] ?? null;
 
   const loadHistory = useCallback(async (repositoryId: string, preferSha?: string) => {
-    const history = await getCommits(repositoryId);
+    const history = await getCommits(repositoryId, branch || undefined);
     setCommits(history);
     if (!history.length) {
       setIndex(0);
@@ -67,7 +70,7 @@ export default function RepositoryPage() {
     }
     const preferred = preferSha ? history.findIndex((c) => c.sha === preferSha) : -1;
     setIndex(preferred >= 0 ? preferred : history.length - 1);
-  }, []);
+  }, [branch]);
 
   useEffect(() => {
     if (!repoKey) {
@@ -75,8 +78,15 @@ export default function RepositoryPage() {
       return;
     }
     setError(null);
-    Promise.all([getRepository(repoKey), getCommits(repoKey), getMetrics(repoKey)])
-      .then(([repo, history, repositoryMetrics]) => {
+    Promise.all([getRepository(repoKey), getBranches(repoKey)])
+      .then(async ([repo, availableBranches]) => {
+        const initialBranch = availableBranches.includes(repo.branch) ? repo.branch : availableBranches[0] || "";
+        const [history, repositoryMetrics] = await Promise.all([
+          getCommits(repoKey, initialBranch || undefined),
+          getMetrics(repoKey, initialBranch || undefined)
+        ]);
+        setBranches(availableBranches);
+        setBranch(initialBranch);
         setRepository(repo as Repository);
         setCommits(history);
         setIndex(history.length ? history.length - 1 : 0);
@@ -84,6 +94,31 @@ export default function RepositoryPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load repository."));
   }, [repoKey]);
+
+  const changeBranch = async (nextBranch: string) => {
+    if (!repoKey || nextBranch === branch) return;
+    setSwitchingBranch(true);
+    setPlaying(false);
+    setError(null);
+    try {
+      const [history, branchMetrics] = await Promise.all([
+        getCommits(repoKey, nextBranch), getMetrics(repoKey, nextBranch)
+      ]);
+      setBranch(nextBranch);
+      setMetrics(branchMetrics);
+      setCommits(history);
+      setIndex(history.length ? history.length - 1 : 0);
+      setDetail(null);
+      setTree(null);
+      setDisplayedFileFrame(null);
+      setSelectedPath(null);
+      setSelectedChange(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not switch branch.");
+    } finally {
+      setSwitchingBranch(false);
+    }
+  };
 
   useEffect(() => {
     if (!repoKey || !selected) return;
@@ -219,7 +254,7 @@ export default function RepositoryPage() {
       const repo = await getRepository(repoKey);
       setRepository(repo as Repository);
       await loadHistory(repoKey, repo.headSha);
-      setMetrics(await getMetrics(repoKey));
+      setMetrics(await getMetrics(repoKey, branch || undefined));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not synchronize repository.");
     } finally {
@@ -232,6 +267,10 @@ export default function RepositoryPage() {
       <section className="extraction-card">
         <StableHeader
           repository={repository}
+          branches={branches}
+          branch={branch}
+          switchingBranch={switchingBranch}
+          onBranchChange={changeBranch}
           metrics={metrics}
           syncing={syncing}
           onSync={sync}
