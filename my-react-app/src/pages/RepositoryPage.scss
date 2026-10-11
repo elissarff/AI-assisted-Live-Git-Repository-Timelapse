@@ -137,3 +137,31 @@
     pointer-events: none;
   }
 }
+
+
+/* Both workspaces scroll independently instead of growing with their contents. */
+.workspace-resizable .workspace-tree,
+.workspace-resizable .workspace-diff {
+  box-sizing: border-box;
+  height: clamp(340px, 100vh, 1370px);
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+/* Preserve sideways scrolling for long lines inside the code viewer. */
+.workspace-resizable .code-viewer-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+@media (max-width: 760px) {
+  .extraction-page .timelapse-bottom { top: 0; }
+  .workspace-resizable .workspace-tree,
+  .workspace-resizable .workspace-diff {
+    height: clamp(260px, 46vh, 500px);
+  }
+}
