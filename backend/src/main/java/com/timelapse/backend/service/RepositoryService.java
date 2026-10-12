@@ -50,7 +50,7 @@ public class RepositoryService {
     public RegisteredRepositoryDto register(CloneRepositoryRequest request) throws Exception {
         String remoteUrl = normalizeAndValidateRemoteUrl(request.remoteUrl());
         Optional<RepositoryEntity> existing =
-        repositoryJpaRepository.findByRemoteUrl(request.remoteUrl());
+        repositoryJpaRepository.findByRemoteUrl(remoteUrl);
 
         // TEMPORARY
         if (existing.isPresent()) {
@@ -229,7 +229,21 @@ public class RepositoryService {
                 || uri.getHost() == null || uri.getUserInfo() != null) {
             throw new IllegalArgumentException("Only credential-free HTTP(S) Git remote URLs are supported");
         }
-        return remoteUrl.trim();
+        // Public URL imports must not allow arbitrary hosts or internal network targets.
+        // GitHub App registrations also use GitHub HTTPS clone URLs.
+        if (!"https".equalsIgnoreCase(uri.getScheme())
+                || !"github.com".equalsIgnoreCase(uri.getHost())
+                || uri.getPort() != -1 || uri.getQuery() != null || uri.getFragment() != null) {
+            throw new IllegalArgumentException("Only public github.com HTTPS repository URLs are supported");
+        }
+        String path = uri.getPath();
+        if (path == null || !path.matches("/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/?")
+                || path.contains("/../") || path.contains("/./")) {
+            throw new IllegalArgumentException("Expected https://github.com/owner/repo");
+        }
+        String canonical = path.replaceAll("/+$", "");
+        if (!canonical.endsWith(".git")) canonical += ".git";
+        return "https://github.com" + canonical;
     }
 
     private String extractRepositoryName(String remoteUrl) {
