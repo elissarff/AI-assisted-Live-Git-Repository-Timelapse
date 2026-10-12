@@ -1,11 +1,12 @@
 import "./RepositoryPage.scss";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
 import { getBranches, getCommit, getCommits, getFile, getTree, getMetrics } from "../api/commits";
 import RepositoryTree from "../components/RepositoryTree";
 import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
+import TimelineFilters from "../components/TimelineFilters";
 import CommitSummary from "../components/CommitSummary";
 import RepositoryHeader from "../components/RepositoryHeader";
 import MetricsExplorer from "../components/MetricsExplorer";
@@ -22,6 +23,10 @@ export default function RepositoryPage() {
   const [branch, setBranch] = useState("");
   const [switchingBranch, setSwitchingBranch] = useState(false);
   const [index, setIndex] = useState(0);
+  const [authors, setAuthors] = useState<string[]>([]);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [messageQuery, setMessageQuery] = useState("");
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const [tree, setTree] = useState<Tree | null>(null);
   const [file, setFile] = useState<FileContent | null>(null);
@@ -59,7 +64,25 @@ export default function RepositoryPage() {
   const treeWidthRef = useRef(treeWidth);
   const frameCache = useRef(new Map<string,{detail:CommitDetail;tree:Tree}>());
   const fileCache = useRef(new Map<string,FileContent|null>());
+  const filteredIndices = useMemo(() => commits.flatMap((commit, i) => {
+    const date = commit.timestamp.slice(0, 10);
+    return (authors.length === 0 || authors.includes(commit.author)) &&
+      (!fromDate || date >= fromDate) && (!toDate || date <= toDate) &&
+      commit.message.toLowerCase().includes(messageQuery.trim().toLowerCase()) ? [i] : [];
+  }), [commits, authors, fromDate, toDate, messageQuery]);
+  const visibleCommits = useMemo(() => filteredIndices.map(i => commits[i]), [commits, filteredIndices]);
+  const visibleIndex = filteredIndices.indexOf(index);
   const selected = commits[index] ?? null;
+  const setVisibleIndex = (next: number) => {
+    const target = filteredIndices[next];
+    if (target !== undefined) setIndex(target);
+  };
+  // fix: only filter changes should interrupt playback, not each advancing commit.
+  useEffect(() => {
+    setPlaying(false);
+    setIndex(current => filteredIndices.length && !filteredIndices.includes(current)
+      ? filteredIndices[filteredIndices.length - 1] : current);
+  }, [filteredIndices]);
 
   const loadHistory = useCallback(async (repositoryId: string, preferSha?: string) => {
     const history = await getCommits(repositoryId, branch || undefined);
@@ -138,18 +161,19 @@ export default function RepositoryPage() {
   },[repoKey,selected?.sha]);
 
   useEffect(() => {
-    if (!playing || commits.length < 2) return;
+    if (!playing || filteredIndices.length < 2) return;
     const timer = window.setInterval(() => {
-      setIndex((current) => {
-        if (current >= commits.length - 1) {
+      setIndex(current => {
+        const position = filteredIndices.indexOf(current);
+        if (position < 0 || position >= filteredIndices.length - 1) {
           setPlaying(false);
           return current;
         }
-        return current + 1;
+        return filteredIndices[position + 1];
       });
     }, BASE_PLAY_INTERVAL_MS / speed);
     return () => window.clearInterval(timer);
-  }, [playing, commits.length, speed]);
+  }, [playing, filteredIndices, speed]);
 
   // File selection is intentionally independent from the timeline. Advancing
   // commits changes the version being displayed, not which file the user chose.
@@ -288,11 +312,18 @@ export default function RepositoryPage() {
           <>
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
-                commits={commits}
-                currentIndex={index}
+                filters={<TimelineFilters
+              allCommits={commits} matchedCount={visibleCommits.length}
+              authors={authors} onAuthorsChange={setAuthors}
+              fromDate={fromDate} onFromDateChange={setFromDate}
+              toDate={toDate} onToDateChange={setToDate}
+              messageQuery={messageQuery} onMessageQueryChange={setMessageQuery}
+            />}
+                commits={visibleCommits}
+                currentIndex={Math.max(0, visibleIndex)}
                 playing={playing}
                 speed={speed}
-                onIndexChange={setIndex}
+                onIndexChange={setVisibleIndex}
                 onPlayingChange={setPlaying}
                 onSpeedChange={setSpeed}
               />
