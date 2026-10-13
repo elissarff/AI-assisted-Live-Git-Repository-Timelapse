@@ -1,0 +1,13 @@
+
+{
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "cd backend && ./mvnw spring-boot:run",
+    "tunnel": "ngrok http 5173 --url motto-nutrient-popular.ngrok-free.dev",
+    "dev:public": "concurrently -k -n FRONTEND,BACKEND,NGROK \"npm:dev:frontend\" \"npm:dev:backend\" \"npm:tunnel\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

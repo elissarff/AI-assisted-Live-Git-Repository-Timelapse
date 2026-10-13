@@ -11,5 +11,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    allowedHosts: [
+      'localhost',
+      'motto-nutrient-popular.ngrok-free.dev',
+    ],
   },
 });

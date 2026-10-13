@@ -22,7 +22,7 @@ async function request<T>(
 ): Promise<T> {
   const { body, headers, ...rest } = options;
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(`${endpoint}`, {
     ...rest,
 
     headers: {
