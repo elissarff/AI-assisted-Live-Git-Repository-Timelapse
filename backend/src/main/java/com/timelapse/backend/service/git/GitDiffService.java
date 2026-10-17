@@ -12,6 +12,7 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.patch.FileHeader;
 import org.eclipse.jgit.revwalk.RevCommit;
@@ -87,6 +88,63 @@ public class GitDiffService {
         return new DiffResult(files, totalAdditions, totalDeletions);
     }
 
+    /** Lightweight diff statistics for repository-wide metrics; never builds source hunks. */
+    public DiffResult getFileChangeStats(Repository repository, RevCommit commit) throws Exception {
+        List<FileChangeDto> files = new ArrayList<>();
+        int additions = 0, deletions = 0;
+        try (DiffFormatter formatter = new DiffFormatter(DisabledOutputStream.INSTANCE)) {
+            formatter.setRepository(repository);
+            formatter.setDetectRenames(false);
+            AbstractTreeIterator oldTree;
+            if (commit.getParentCount() == 0) {
+                oldTree = new EmptyTreeIterator();
+            } else {
+                try (RevWalk walk = new RevWalk(repository)) {
+                    oldTree = prepareTreeParser(repository, walk.parseCommit(commit.getParent(0).getId()));
+                }
+            }
+            for (DiffEntry entry : formatter.scan(oldTree, prepareTreeParser(repository, commit))) {
+                if (FileMode.GITLINK.equals(entry.getOldMode()) || FileMode.GITLINK.equals(entry.getNewMode())) continue;
+                FileHeader header = formatter.toFileHeader(entry);
+                int add = countAdditions(header), del = countDeletions(header);
+                additions += add;
+                deletions += del;
+                files.add(new FileChangeDto(entry.getOldPath(), entry.getNewPath(),
+                        mapChangeType(entry.getChangeType()), add, del, header.getPatchType() == FileHeader.PatchType.BINARY, List.of()));
+            }
+        }
+        return new DiffResult(files, additions, deletions);
+    }
+
+    /** Reuses one formatter, object reader and rev walk across an entire metrics run. */
+    public DiffResult getFileChangeStats(Repository repository, RevCommit commit,
+                                         DiffFormatter formatter, ObjectReader reader,
+                                         RevWalk walk) throws Exception {
+        List<FileChangeDto> files = new ArrayList<>();
+        int additions = 0, deletions = 0;
+        AbstractTreeIterator oldTree = commit.getParentCount() == 0
+                ? new EmptyTreeIterator()
+                : treeParser(reader, walk.parseCommit(commit.getParent(0).getId()).getTree().getId());
+        AbstractTreeIterator newTree = treeParser(reader, commit.getTree().getId());
+        for (DiffEntry entry : formatter.scan(oldTree, newTree)) {
+            if (FileMode.GITLINK.equals(entry.getOldMode()) || FileMode.GITLINK.equals(entry.getNewMode())) continue;
+            FileHeader header = formatter.toFileHeader(entry);
+            int add = countAdditions(header), del = countDeletions(header);
+            additions += add;
+            deletions += del;
+            files.add(new FileChangeDto(entry.getOldPath(), entry.getNewPath(),
+                    mapChangeType(entry.getChangeType()), add, del,
+                    header.getPatchType() == FileHeader.PatchType.BINARY, List.of()));
+        }
+        return new DiffResult(files, additions, deletions);
+    }
+
+    private CanonicalTreeParser treeParser(ObjectReader reader, ObjectId treeId) throws IOException {
+        CanonicalTreeParser parser = new CanonicalTreeParser();
+        parser.reset(reader, treeId);
+        return parser;
+    }
+
     private RevCommit firstParent(Repository repository, RevCommit commit) throws IOException {
         if (commit.getParentCount() == 0) return null;
         try (RevWalk walk = new RevWalk(repository)) {
@@ -109,7 +167,7 @@ public class GitDiffService {
                     path,
                     treeWalk.getObjectId(0).name()
                 );
-                return null;
+                return RawFile.empty();
             }
 
             ObjectId objectId = treeWalk.getObjectId(0);
