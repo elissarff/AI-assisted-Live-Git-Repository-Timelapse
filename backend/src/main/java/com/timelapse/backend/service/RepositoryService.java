@@ -142,6 +142,12 @@ public class RepositoryService {
         return gitMiningService.getAllCommits(gitDirectory, headSha);
     }
 
+    public Object getIndividualMetric(String id, String branch, String name) throws Exception {
+        RepositoryEntity repository = requireRepository(id);
+        return gitMiningService.getIndividualMetric(Path.of(repository.getLocalGitDirectory()),
+                branch == null || branch.isBlank() ? repository.getDefaultBranch() : branch, name);
+    }
+
     public RepositoryMetricsDto getRepositoryMetrics(String id, String branch) throws Exception {
         RepositoryEntity repository = requireRepository(id);
         return gitMiningService.getRepositoryMetrics(Path.of(repository.getLocalGitDirectory()),

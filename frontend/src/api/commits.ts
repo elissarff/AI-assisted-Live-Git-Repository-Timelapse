@@ -33,3 +33,12 @@ export function getFile(
 export function getMetrics(repositoryId: string, branch?: string): Promise<RepositoryMetrics> {
   return api.get<RepositoryMetrics>(`${base(repositoryId)}/metrics${branch ? `?branch=${encodeURIComponent(branch)}` : ""}`);
 }
+
+export type MetricName = "activityOverTime" | "contributors" | "files" | "directories" | "filesChangedTogether";
+export type MetricSummary = Pick<RepositoryMetrics, "totalCommits" | "contributorCount" | "firstCommitAt" | "lastCommitAt" | "repositoryAgeDays" | "totalAdditions" | "totalDeletions" | "codeChurn">;
+export function getMetricSummary(repositoryId: string, branch?: string): Promise<MetricSummary> {
+  return api.get<MetricSummary>(`${base(repositoryId)}/metrics/summary${branch ? `?branch=${encodeURIComponent(branch)}` : ""}`);
+}
+export function getMetric<K extends MetricName>(repositoryId: string, name: K, branch?: string): Promise<RepositoryMetrics[K]> {
+  return api.get<RepositoryMetrics[K]>(`${base(repositoryId)}/metrics/${name}${branch ? `?branch=${encodeURIComponent(branch)}` : ""}`);
+}

@@ -2,7 +2,7 @@ import "./RepositoryPage.scss";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getRepository, syncRepository } from "../api/repositories";
-import { getBranches, getCommit, getCommits, getFile, getTree, getMetrics } from "../api/commits";
+import { getBranches, getCommit, getCommits, getFile, getTree, getMetricSummary, getMetric, type MetricName, type MetricSummary } from "../api/commits";
 import RepositoryTree from "../components/RepositoryTree";
 import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
@@ -45,7 +45,17 @@ export default function RepositoryPage() {
   } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [metrics, setMetrics] = useState<RepositoryMetrics | null>(null);
+  const [metrics, setMetrics] = useState<MetricSummary | null>(null);
+  const [details, setDetails] = useState<Partial<RepositoryMetrics>>({});
+  const [metricErrors, setMetricErrors] = useState<Partial<Record<MetricName, string>>>({});
+  const requestVersion = useRef(0);
+  const detailCache = useRef(new Map<string, Partial<RepositoryMetrics>>());
+  const metricNames: MetricName[] = ["activityOverTime", "contributors", "files", "directories", "filesChangedTogether"];
+  const loadSummary = (id: string, selectedBranch: string, version: number) => {
+    getMetricSummary(id, selectedBranch || undefined).then(value => {
+      if (requestVersion.current === version) setMetrics(value);
+    }).catch(() => { if (requestVersion.current === version) setMetrics(null); });
+  };
   const [metricsOpen, setMetricsOpen] = useState(false);
   const metricsSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -104,19 +114,40 @@ export default function RepositoryPage() {
     Promise.all([getRepository(repoKey), getBranches(repoKey)])
       .then(async ([repo, availableBranches]) => {
         const initialBranch = availableBranches.includes(repo.branch) ? repo.branch : availableBranches[0] || "";
-        const [history, repositoryMetrics] = await Promise.all([
-          getCommits(repoKey, initialBranch || undefined),
-          getMetrics(repoKey, initialBranch || undefined)
-        ]);
+        const version = ++requestVersion.current;
         setBranches(availableBranches);
         setBranch(initialBranch);
         setRepository(repo as Repository);
+        setMetrics(null);
+        setDetails({});
+        loadSummary(repoKey, initialBranch, version);
+        const history = await getCommits(repoKey, initialBranch || undefined);
+        if (requestVersion.current !== version) return;
         setCommits(history);
         setIndex(history.length ? history.length - 1 : 0);
-        setMetrics(repositoryMetrics);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load repository."));
   }, [repoKey]);
+
+  useEffect(() => {
+    if (!metricsOpen || !repoKey) return;
+    const version = requestVersion.current;
+    const cacheKey = `${repoKey}:${branch}`;
+    const cached = detailCache.current.get(cacheKey) ?? {};
+    setDetails(cached);
+    setMetricErrors({});
+    metricNames.forEach(name => {
+      if (cached[name] !== undefined) return;
+      getMetric(repoKey, name, branch || undefined).then(result => {
+        if (requestVersion.current !== version) return;
+        const next = { ...detailCache.current.get(cacheKey), [name]: result };
+        detailCache.current.set(cacheKey, next);
+        setDetails(previous => ({ ...previous, [name]: result }));
+      }).catch(err => {
+        if (requestVersion.current === version) setMetricErrors(previous => ({ ...previous, [name]: err instanceof Error ? err.message : "Could not load metric" }));
+      });
+    });
+  }, [metricsOpen, repoKey, branch]);
 
   const changeBranch = async (nextBranch: string) => {
     if (!repoKey || nextBranch === branch) return;
@@ -124,11 +155,14 @@ export default function RepositoryPage() {
     setPlaying(false);
     setError(null);
     try {
-      const [history, branchMetrics] = await Promise.all([
-        getCommits(repoKey, nextBranch), getMetrics(repoKey, nextBranch)
-      ]);
+      const version = ++requestVersion.current;
       setBranch(nextBranch);
-      setMetrics(branchMetrics);
+      setMetrics(null);
+      setDetails({});
+      setMetricErrors({});
+      loadSummary(repoKey, nextBranch, version);
+      const history = await getCommits(repoKey, nextBranch);
+      if (requestVersion.current !== version) return;
       setCommits(history);
       setIndex(history.length ? history.length - 1 : 0);
       setDetail(null);
@@ -278,7 +312,11 @@ export default function RepositoryPage() {
       const repo = await getRepository(repoKey);
       setRepository(repo as Repository);
       await loadHistory(repoKey, repo.headSha);
-      setMetrics(await getMetrics(repoKey, branch || undefined));
+      const version = ++requestVersion.current;
+      setMetrics(null);
+      setDetails({});
+      detailCache.current.clear();
+      loadSummary(repoKey, branch, version);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not synchronize repository.");
     } finally {
@@ -373,7 +411,7 @@ export default function RepositoryPage() {
               </div>}
               </div>
             </section>
-            {metrics && metricsOpen && <div ref={metricsSectionRef} className="metrics-details-anchor"><MetricsExplorer metrics={metrics} commits={commits} onClose={() => setMetricsOpen(false)} /></div>}
+            {metricsOpen && <div ref={metricsSectionRef} className="metrics-details-anchor"><MetricsExplorer metrics={metrics} details={details} errors={metricErrors} commits={commits} onClose={() => setMetricsOpen(false)} /></div>}
           </>
         )}
       </section>

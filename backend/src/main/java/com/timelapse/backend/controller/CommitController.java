@@ -57,6 +57,12 @@ public class CommitController {
         return repositoryService.getRepositoryMetrics(repositoryId, branch);
     }
 
+    @GetMapping("/metrics/{name}")
+    public Object individualMetric(@PathVariable String repositoryId, @PathVariable String name,
+                                   @RequestParam(required = false) String branch) throws Exception {
+        return repositoryService.getIndividualMetric(repositoryId, branch, name);
+    }
+
     /**
      * Full authoritative Git facts for one commit: message, author, parents,
      * timestamp, changed files, change type and +/- line counts.

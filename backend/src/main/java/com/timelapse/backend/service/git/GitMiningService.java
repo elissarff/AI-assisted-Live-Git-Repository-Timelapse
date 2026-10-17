@@ -109,6 +109,12 @@ public class GitMiningService {
         }
     }
 
+    public Object getIndividualMetric(Path gitDirectory, String branch, String name) throws Exception {
+        try (Repository repository = repositories.openRepository(gitDirectory)) {
+            return metrics.calculateIndividual(repository, repositories.resolveBranch(repository, branch), name);
+        }
+    }
+
     public RepositoryMetricsDto getRepositoryMetrics(Path gitDirectory, String branch) throws Exception {
         try (Repository repository = repositories.openRepository(gitDirectory)) {
             ObjectId branchHead = repositories.resolveBranch(repository, branch);
