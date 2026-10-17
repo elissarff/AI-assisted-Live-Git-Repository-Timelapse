@@ -9,6 +9,7 @@ import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.Edit;
 import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
@@ -20,6 +21,8 @@ import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.io.DisabledOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.timelapse.backend.dto.DiffHunkDto;
@@ -31,6 +34,7 @@ import com.timelapse.backend.types.FileChangeType;
 @Service
 public class GitDiffService {
     private static final int CONTEXT_LINES = 3;
+    private static final Logger log = LoggerFactory.getLogger(GitDiffService.class);
 
     public DiffResult getFileChanges(Repository repository, RevCommit commit) throws Exception {
         List<DiffEntry> entries = getDiffEntries(repository, commit);
@@ -44,6 +48,23 @@ public class GitDiffService {
 
             RevCommit parent = firstParent(repository, commit);
             for (DiffEntry entry : entries) {
+
+                // Check if the entry is a submodule, skip 
+                boolean oldIsSubmodule =
+                    FileMode.GITLINK.equals(entry.getOldMode());
+
+                boolean newIsSubmodule =
+                    FileMode.GITLINK.equals(entry.getNewMode());
+
+                if (oldIsSubmodule || newIsSubmodule) {
+                    log.debug(
+                        "Skipping submodule diff: oldPath={}, newPath={}",
+                        entry.getOldPath(),
+                        entry.getNewPath()
+                    );
+                    continue;
+                }
+
                 FileHeader header = formatter.toFileHeader(entry);
                 int additions = countAdditions(header);
                 int deletions = countDeletions(header);
@@ -52,6 +73,7 @@ public class GitDiffService {
 
                 RawFile oldFile = readFile(repository, parent, entry.getOldPath());
                 RawFile newFile = readFile(repository, commit, entry.getNewPath());
+                
                 boolean binary = oldFile.binary() || newFile.binary();
                 List<DiffHunkDto> hunks = binary
                         ? List.of()
@@ -75,8 +97,21 @@ public class GitDiffService {
     /** Reads the exact blob at a commit so diff DTOs contain real source lines, not just counts. */
     private RawFile readFile(Repository repository, RevCommit commit, String path) throws IOException {
         if (commit == null || path == null || DiffEntry.DEV_NULL.equals(path)) return RawFile.empty();
+        
         try (TreeWalk treeWalk = TreeWalk.forPath(repository, path, commit.getTree())) {
             if (treeWalk == null) return RawFile.empty();
+
+            FileMode mode = treeWalk.getFileMode(0);
+
+            if (FileMode.GITLINK.equals(mode)) {
+                log.debug(
+                    "Skipping submodule content: path={}, commit={}",
+                    path,
+                    treeWalk.getObjectId(0).name()
+                );
+                return null;
+            }
+
             ObjectId objectId = treeWalk.getObjectId(0);
             ObjectLoader loader = repository.open(objectId, Constants.OBJ_BLOB);
             byte[] bytes = loader.getBytes();
