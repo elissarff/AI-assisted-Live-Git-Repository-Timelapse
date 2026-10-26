@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { Repository } from "../types/repository";
 import type { RepositoryMetrics } from "../types/git";
@@ -14,9 +15,10 @@ type Props = {
   onSync: () => void;
   onExploreMetrics: () => void;
   metricsOpen: boolean;
+  aiControl?: ReactNode;
 };
 
-export default function RepositoryHeader({ repository, branches, branch, switchingBranch, onBranchChange, metrics, syncing, onSync, onExploreMetrics, metricsOpen }: Props) {
+export default function RepositoryHeader({ repository, branches, branch, switchingBranch, onBranchChange, metrics, syncing, onSync, onExploreMetrics, metricsOpen, aiControl }: Props) {
   const format = (value: number) => value.toLocaleString();
   return <>
     <Link className="repository-back-link" to="/repositories"><span aria-hidden="true">←</span> <span>All repositories</span></Link>
@@ -41,6 +43,7 @@ export default function RepositoryHeader({ repository, branches, branch, switchi
                   <svg className="branch-select-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </div>
               </div>
+              {aiControl}
               <button type="button" className="sync-action" onClick={onSync} disabled={syncing}><span aria-hidden="true">↻</span> {syncing ? "Syncing…" : "Sync repository"}</button>
             </div>
             <div className="repository-head"><span>HEAD</span> <code title={repository.headSha}>{repository.headSha || "—"}</code></div>

@@ -9,6 +9,7 @@ import TimeLine from "../components/TimeLine";
 import TimelineFilters from "../components/TimelineFilters";
 import CommitSummary from "../components/CommitSummary";
 import RepositoryHeader from "../components/RepositoryHeader";
+import AiSettingsPanel from "../components/ai/AiSettingsPanel";
 import MetricsExplorer from "../components/MetricsExplorer";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
@@ -337,6 +338,7 @@ export default function RepositoryPage() {
           syncing={syncing}
           onSync={sync}
           metricsOpen={metricsOpen}
+          aiControl={repoKey && repository ? <AiSettingsPanel repoKey={repoKey} /> : undefined}
           onExploreMetrics={() => {
             if (!metricsOpen) setMetricsOpen(true);
             else metricsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
