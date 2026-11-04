@@ -26,18 +26,21 @@ public class RepositorySyncService {
     private final GitRepositoryService gitRepositoryService;
     private final GitMiningService gitMiningService;
     private final GitHubTokenService gitHubTokenService;
+    private final com.timelapse.backend.service.refactoring.RefactoringAnalysisService refactoringAnalysis;
     private final ConcurrentHashMap<Long, ReentrantLock> repositoryLocks = new ConcurrentHashMap<>();
 
     public RepositorySyncService(
             RepositoryJpaRepository repositoryJpaRepository,
             GitRepositoryService gitRepositoryService,
             GitMiningService gitMiningService,
-            GitHubTokenService gitHubTokenService
+            GitHubTokenService gitHubTokenService,
+            com.timelapse.backend.service.refactoring.RefactoringAnalysisService refactoringAnalysis
     ) {
         this.repositoryJpaRepository = repositoryJpaRepository;
         this.gitRepositoryService = gitRepositoryService;
         this.gitMiningService = gitMiningService;
         this.gitHubTokenService = gitHubTokenService;
+        this.refactoringAnalysis = refactoringAnalysis;
     }
 
     public SyncResultDto sync(String repoKey) throws Exception {
@@ -103,6 +106,9 @@ public class RepositorySyncService {
         repository.setLastProcessedSha(currentSha);
         repository.setLastCheckedAt(syncedAt);
         repositoryJpaRepository.save(repository);
+        // Queue only; never wait for mining before returning the Git sync result.
+        try { refactoringAnalysis.enqueueFromSync(repository.getId(), commits.stream().map(CommitDto::sha).toList()); }
+        catch (Exception ignored) { /* refactoring failures must not break Git sync */ }
 
         return new SyncResultDto(repository.getRepoKey().toString(), previousSha, currentSha,
                 true, commits.size(), commits.size(), commits, syncedAt);

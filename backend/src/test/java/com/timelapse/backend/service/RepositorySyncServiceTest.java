@@ -28,6 +28,7 @@ import com.timelapse.backend.repository.RepositoryJpaRepository;
 import com.timelapse.backend.service.git.GitMiningService;
 import com.timelapse.backend.service.git.GitRepositoryService;
 import com.timelapse.backend.service.github.GitHubTokenService;
+import com.timelapse.backend.service.refactoring.RefactoringAnalysisService;
 import com.timelapse.backend.types.MonitoringType;
 
 class RepositorySyncServiceTest {
@@ -95,6 +96,7 @@ class RepositorySyncServiceTest {
         GitRepositoryService git = mock(GitRepositoryService.class);
         GitMiningService gitMining = mock(GitMiningService.class);
         GitHubTokenService token = mock(GitHubTokenService.class);
+        RefactoringAnalysisService refactoring = mock(RefactoringAnalysisService.class);
         RepositoryEntity entity = new RepositoryEntity();
         var idField = RepositoryEntity.class.getDeclaredField("id");
         idField.setAccessible(true);
@@ -108,7 +110,7 @@ class RepositorySyncServiceTest {
         entity.setLastProcessedSha(sha);
         when(repository.findById(1L)).thenReturn(Optional.of(entity));
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        return new Fixture(new RepositorySyncService(repository, git, gitMining, token), repository, git, gitMining, token, entity);
+        return new Fixture(new RepositorySyncService(repository, git, gitMining, token, refactoring), repository, git, gitMining, token, entity);
     }
 
     private record Fixture(RepositorySyncService service, RepositoryJpaRepository repository,
