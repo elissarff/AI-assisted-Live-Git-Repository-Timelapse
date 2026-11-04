@@ -1,10 +1,14 @@
 package com.timelapse.backend.service.refactoring;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.timelapse.backend.entity.RepositoryEntity;
-import com.timelapse.backend.repository.RepositoryJpaRepository;
-import com.timelapse.backend.repository.RefactoringRepositorySettingsJpaRepository;
-import com.timelapse.backend.service.git.GitRepositoryService;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -17,13 +21,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.file.Path;
-import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.time.OffsetDateTime;
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.timelapse.backend.entity.RepositoryEntity;
+import com.timelapse.backend.repository.RefactoringRepositorySettingsJpaRepository;
+import com.timelapse.backend.repository.RepositoryJpaRepository;
+import com.timelapse.backend.service.git.GitRepositoryService;
 
 @Service
 public class RefactoringAnalysisService {
@@ -94,16 +96,80 @@ public class RefactoringAnalysisService {
         return settings.findById(id).map(s -> s.isEnabled()).orElse(false);
     }
 
+    
     public Map<String, Object> job(UUID key, String sha) {
         RepositoryEntity repo = require(key);
-        List<Map<String, Object>> jobs = jdbc.queryForList("SELECT id,commit_sha,status,attempts,last_error,created_at,updated_at FROM refactoring_jobs WHERE repository_id=? AND commit_sha=?", repo.getId(), sha);
+
+        List<Map<String, Object>> jobs = jdbc.queryForList(
+            """
+            SELECT id, commit_sha, status, attempts, last_error,
+                created_at, updated_at
+            FROM refactoring_jobs
+            WHERE repository_id = ? AND commit_sha = ?
+            """,
+            repo.getId(), sha
+        );
+
         if (jobs.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No analysis for commit");
+            throw new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "No analysis for commit"
+            );
         }
-        Map<String, Object> result = new LinkedHashMap<>(jobs.get(0));
-        result.put("refactorings", jdbc.queryForList("SELECT id,parent_sha,type,description,before_locations,after_locations FROM detected_refactorings WHERE job_id=? ORDER BY id", result.get("id")));
+
+        Map<String, Object> result =
+            new LinkedHashMap<>(jobs.get(0));
+
+        List<Map<String, Object>> refactorings = jdbc.query(
+            """
+            SELECT id, parent_sha, type, description,
+                before_locations::text AS before_locations,
+                after_locations::text AS after_locations
+            FROM detected_refactorings
+            WHERE job_id = ?
+            ORDER BY id
+            """,
+            (rs, rowNum) -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+
+                item.put("id", rs.getLong("id"));
+                item.put("parent_sha", rs.getString("parent_sha"));
+                item.put("type", rs.getString("type"));
+                item.put("description", rs.getString("description"));
+
+                try {
+                    String before = rs.getString("before_locations");
+                    String after = rs.getString("after_locations");
+
+                    item.put(
+                        "before_locations",
+                        before == null
+                            ? List.of()
+                            : mapper.readValue(before, List.class)
+                    );
+
+                    item.put(
+                        "after_locations",
+                        after == null
+                            ? List.of()
+                            : mapper.readValue(after, List.class)
+                    );
+                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                    throw new IllegalStateException(
+                        "Failed to deserialize refactoring locations",
+                        e
+                    );
+                }
+
+                return item;
+            },
+            result.get("id")
+        );
+
+        result.put("refactorings", refactorings);
         return result;
     }
+
 
     public List<Map<String, Object>> list(UUID key, int limit, int offset) {
         RepositoryEntity repo = require(key);
