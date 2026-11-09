@@ -66,3 +66,33 @@
 .refactoring-code-title { font-size:12px; font-weight:700; color:#885900; padding:7px 0; }
 .refactoring-compare-columns > div { background:#fff; }
 .refactoring-compare-columns pre { background:#fff; border:1px solid #e5e7eb; border-radius:5px; }
+
+
+/* Compact, neutral comparison: amber signals type only; Git diff colors remain intact. */
+.code-viewer .refactoring-discovery{display:flex;align-items:center;gap:10px;padding:9px 14px;background:#fff;border-bottom:1px solid #e5e7eb;color:#475569;}
+.code-viewer .refactoring-discovery-label{white-space:nowrap;font-size:12px;font-weight:650;color:#334155;}
+.code-viewer .refactoring-count{font-size:10px;font-weight:650;background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:10px;margin-left:3px;}
+.code-viewer .refactoring-action-list{display:flex;gap:6px;flex-wrap:wrap;min-width:0;}
+.code-viewer .refactoring-action{gap:7px;padding:4px 9px;border:1px solid #e5d6b6;border-radius:6px;background:#fff;color:#805512;font-size:11px;font-weight:650;box-shadow:none;outline:0;}
+.code-viewer .refactoring-action:hover,.code-viewer .refactoring-action.is-open{background:#fff8eb;border-color:#d5ab60;outline:0;}
+.code-viewer .refactoring-action:focus-visible,.code-viewer .refactoring-dismiss:focus-visible{outline:2px solid #a97724;outline-offset:2px;}
+.code-viewer .refactoring-action-chevron{color:#a0804c;font-size:13px;}
+.code-viewer .refactoring-inline-compare{margin:0;padding:14px 16px 16px;border:0;border-bottom:1px solid #e5e7eb;border-radius:0;background:#fff;color:#1f2937;}
+.code-viewer .refactoring-compare-heading{display:flex;align-items:center;gap:10px;margin-bottom:12px;min-width:0;}
+.code-viewer .refactoring-detail-badge{flex:none;font-size:11px;font-weight:700;color:#85540c;background:#fff5e4;border:1px solid #ead5ad;border-radius:5px;padding:4px 8px;}
+.code-viewer .refactoring-detail-context{flex:1;min-width:0;color:#475569;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.code-viewer .refactoring-dismiss{border:0;background:transparent;color:#64748b;font-size:20px;line-height:1;padding:2px 6px;border-radius:5px;cursor:pointer;}
+.code-viewer .refactoring-dismiss:hover{background:#f1f5f9;color:#334155;}
+.code-viewer .refactoring-compare-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;}
+.code-viewer .refactoring-column-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;color:#475569;font-size:11px;}
+.code-viewer .refactoring-column-heading strong{font-size:11px;font-weight:650;color:#334155;}
+.code-viewer .refactoring-column-heading span{font-size:10px;color:#94a3b8;}
+.code-viewer .refactoring-compare-columns pre{margin:0;padding:10px 12px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;color:#273244;font-size:11px;line-height:1.6;overflow:auto;max-height:240px;white-space:pre;}
+.code-viewer .refactoring-move-summary{border:1px solid #e5e7eb;background:#fff;border-radius:6px;margin:0 0 12px;padding:9px 11px;}
+.code-viewer .refactoring-move-summary small{color:#64748b;font-weight:650;text-transform:none;}
+.code-viewer .refactoring-move-arrow{color:#a97724;font-size:16px;}
+.code-viewer .refactoring-evidence-note{font-size:11px;color:#64748b;margin:10px 0 0;}
+.code-viewer .refactoring-technical{font-size:11px;color:#64748b;margin-top:10px;}
+.code-viewer .refactoring-technical summary{cursor:pointer;}
+.code-viewer .refactoring-technical p{overflow-wrap:anywhere;margin:6px 0 0;}
+@media(max-width:700px){.code-viewer .refactoring-compare-columns{grid-template-columns:1fr}.code-viewer .refactoring-discovery{align-items:flex-start;flex-direction:column}.code-viewer .refactoring-move-summary{flex-direction:column;align-items:stretch}}

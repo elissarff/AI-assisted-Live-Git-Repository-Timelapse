@@ -72,6 +72,24 @@ function evolution(change: FileChange, beforeContent?: string | null, afterConte
   return rows.length ? rows : before.map((text, i) => ({ kind: "context", text, oldNo: i + 1 }));
 }
 
+
+function friendlyRefactoring(r: DetectedRefactoring) {
+  const type = r.type.replaceAll("_", " ").toLowerCase();
+  const title = type.charAt(0).toUpperCase() + type.slice(1);
+  const description = r.description ?? "";
+  const annotation = description.match(/(?:Add|Remove|Modify) (?:Attribute|Method|Class|Parameter) Annotation\s+(@[\w.]+)/i);
+  const target = description.match(/\b(?:attribute|method|class|parameter)\s+(.+?)\s+(?:from|in|to)\s+(?:class|method|attribute)\b/i);
+  const name = target?.[1]?.trim().split(/\s*:\s*/)[0]?.replace(/^(?:private|public|protected|static|final|abstract|volatile|transient|synchronized|native|default|\s)+/g, "").trim();
+  const shortName = name?.split(/\s+/).pop();
+  const verb = r.type.startsWith("ADD_") ? "Added" : r.type.startsWith("REMOVE_") ? "Removed" : "Changed";
+  const summary = annotation ? `${verb} ${annotation[1]}${shortName ? ` on ${shortName}` : ""}` : "";
+  return { title, summary };
+}
+function sourceExcerpt(source: string | undefined | null, start?: number, end?: number) {
+  if (!source || !start || start < 1) return "";
+  return splitLines(source).slice(start - 1, Math.min(end ?? start, start + 11)).map((line, i) => `${start + i}  ${line}`).join("\n");
+}
+
 function FileDiff({ change, content, beforeContent, afterContent, binary, path, highlights = [], refactorings = [], focusLine, focusSide = "after" }: Props) {
   const [mode, setMode] = useState<"code" | "diff">("diff");
   const [expandedRefactoring, setExpandedRefactoring] = useState<number | null>(null);
@@ -120,13 +138,47 @@ function FileDiff({ change, content, beforeContent, afterContent, binary, path, 
         <button type="button" className="code-viewer-action" title="Download file" onClick={download}>Download</button>
       </div>
     </div>
-    {refactorings.length > 0 && <div className="refactoring-discovery" aria-label="Detected structural refactorings">
-      <strong>◆ Structural changes in this file</strong>
-      {refactorings.map(r => <button key={r.id} type="button" className={`refactoring-action ${expandedRefactoring === r.id ? "is-open" : ""}`} onClick={() => setExpandedRefactoring(expandedRefactoring === r.id ? null : r.id)} aria-expanded={expandedRefactoring === r.id}>
-        <span className="refactoring-action-type">{r.type.replaceAll("_", " ")}</span><span>{expandedRefactoring === r.id ? "Hide details" : "View what changed"}</span><span aria-hidden="true">{expandedRefactoring === r.id ? "▴" : "▾"}</span>
-      </button>)}
-    </div>}
-    {expandedRefactoring !== null && (() => { const r=refactorings.find(item=>item.id===expandedRefactoring); if(!r)return null; const before=r.before_locations.find(l=>l.filePath===change?.oldPath || l.filePath===displayPath) ?? r.before_locations[0]; const after=r.after_locations.find(l=>l.filePath===displayPath) ?? r.after_locations[0]; const excerpt=(source:string|undefined|null,start?:number,end?:number)=>splitLines(source).slice(Math.max(0,(start??1)-1),Math.max(start??1,end??start??1)).map((line,i)=>`${(start??1)+i}  ${line}`).join("\n"); const moved = r.type.includes("MOVE") || r.type.includes("RENAME"); return <div className="refactoring-inline-compare"><div className="refactoring-compare-heading"><strong>{r.type.replaceAll("_", " ")}</strong><button type="button" onClick={()=>setExpandedRefactoring(null)}>Close ×</button></div>{moved && <div className="refactoring-move-summary"><div><small>BEFORE</small><code>{before?.filePath ?? "Unknown location"}</code></div><span className="refactoring-move-arrow" aria-hidden="true">→</span><div><small>AFTER</small><code>{after?.filePath ?? "Unknown location"}</code></div></div>}<p className="refactoring-description">{r.description}</p><div className="refactoring-code-details"><div className="refactoring-code-title">Affected source lines ({before?.startLine ?? "?"}–{before?.endLine ?? "?"} → {after?.startLine ?? "?"}–{after?.endLine ?? "?"})</div><div className="refactoring-compare-columns"><div><strong>Before</strong><pre>{excerpt(beforeContent,before?.startLine,before?.endLine) || "Before source unavailable"}</pre></div><div><strong>After</strong><pre>{excerpt(afterContent ?? content,after?.startLine,after?.endLine) || "After source unavailable"}</pre></div></div></div></div>; })()}
+    {refactorings.length > 0 && <section className="refactoring-discovery" aria-label="Detected structural refactorings">
+      <span className="refactoring-discovery-label">Structural changes <span className="refactoring-count">{refactorings.length}</span></span>
+      <div className="refactoring-action-list">
+        {refactorings.map(r => <button key={r.id} type="button" className={`refactoring-action ${expandedRefactoring === r.id ? "is-open" : ""}`} onClick={() => setExpandedRefactoring(expandedRefactoring === r.id ? null : r.id)} aria-expanded={expandedRefactoring === r.id}>
+          {friendlyRefactoring(r).title}<span className="refactoring-action-chevron" aria-hidden="true">{expandedRefactoring === r.id ? "⌃" : "⌄"}</span>
+        </button>)}
+      </div>
+    </section>}
+    {expandedRefactoring !== null && (() => {
+      const r = refactorings.find(item => item.id === expandedRefactoring);
+      if (!r) return null;
+      const before = r.before_locations.find(l => l.filePath === change?.oldPath || l.filePath === displayPath) ?? r.before_locations[0];
+      const after = r.after_locations.find(l => l.filePath === displayPath) ?? r.after_locations[0];
+      const beforeCode = sourceExcerpt(beforeContent, before?.startLine, before?.endLine);
+      const afterCode = sourceExcerpt(afterContent ?? content, after?.startLine, after?.endLine);
+      const { title, summary } = friendlyRefactoring(r);
+      const showPathChange = Boolean(
+        before?.filePath &&
+        after?.filePath &&
+        before.filePath !== after.filePath
+      );
+      const sameCode = Boolean(beforeCode && afterCode && beforeCode.replace(/^\d+\s+/gm, "") === afterCode.replace(/^\d+\s+/gm, ""));
+      return <section className="refactoring-inline-compare" aria-label={`${title} comparison`}>
+        <div className="refactoring-compare-heading">
+          <span className="refactoring-detail-badge" style={{background: "white", border: "none", padding: "0"}}>{title}</span>
+          <span className="refactoring-detail-context" title={r.description}>{summary || ""}</span>
+          <button type="button" className="refactoring-dismiss" aria-label="Close refactoring details" onClick={() => setExpandedRefactoring(null)}>×</button>
+        </div>
+        {showPathChange && (before?.filePath || after?.filePath) && <div className="refactoring-move-summary">
+          <div><small>From</small><code>{before?.filePath ?? "Unknown location"}</code></div>
+          <span className="refactoring-move-arrow" aria-hidden="true">→</span>
+          <div><small>To</small><code>{after?.filePath ?? "Unknown location"}</code></div>
+        </div>}
+        <div className="refactoring-compare-columns">
+          <div><div className="refactoring-column-heading"><strong>Before</strong><span>{before?.startLine ? `Line ${before.startLine}${before.endLine && before.endLine !== before.startLine ? `–${before.endLine}` : ""}` : ""}</span></div><pre>{beforeCode || "Source unavailable"}</pre></div>
+          <div><div className="refactoring-column-heading"><strong>After</strong><span>{after?.startLine ? `Line ${after.startLine}${after.endLine && after.endLine !== after.startLine ? `–${after.endLine}` : ""}` : ""}</span></div><pre>{afterCode || "Source unavailable"}</pre></div>
+        </div>
+        {sameCode && <p className="refactoring-evidence-note">The affected source lines are unchanged. The structural change may involve related code elsewhere in this commit.</p>}
+        {!summary && <details className="refactoring-technical"><summary>Detector description</summary><p>{r.description}</p></details>}
+      </section>;
+    })()}
     {mode === "diff" && canDiff && <div className="code-viewer-legend"><span><b className="legend-add">+</b> Added</span><span><b className="legend-delete">−</b> Removed</span></div>}
     {isBinary ? <div className="code-viewer-empty">Binary file preview is unavailable.</div> :
       <div ref={scrollRef} className="code-viewer-scroll" role="table" aria-label={mode === "diff" ? "File changes" : "File source code"}>

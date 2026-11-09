@@ -166,16 +166,12 @@
   }
 }
 
-/* Optional, compact refactoring overlay */
-.refactoring-compact { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12px; }
-.refactoring-compact label { white-space:nowrap; cursor:pointer; }
-.refactoring-compact button { padding:3px 7px; font-size:11px; }
-.refactoring-bubble { border:1px solid #d7a42c; border-radius:14px; background:#fff5cf; color:#654800; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.refactoring-timeline-markers { height:12px; position:relative; margin:0 8px; }
-.refactoring-timeline-markers button { position:absolute; top:0; width:9px; height:9px; padding:0; border-radius:50%; border:1px solid #c68e0e; background:#ffcc42; transform:translateX(-50%); cursor:pointer; }
-
-.refactoring-compact.refactoring-mode-active{background:#fff1c7;border:1px solid #d8a02a;border-radius:20px;padding:4px 9px;color:#774d00}
-.refactoring-mode-active label{font-weight:750}
-.refactoring-mode-active input{accent-color:#b77900}
-.refactoring-bubble{font-weight:750;cursor:pointer;border-width:2px}
-.refactoring-bubble:hover,.refactoring-bubble:focus-visible{background:#ffdf83;outline:2px solid #bf8200}
+/* Minimal timeline refactoring toggle and commit markers. */
+.refactoring-compact { display:flex; align-items:center; gap:6px; font-size:12px; }
+.refactoring-compact label { display:flex; align-items:center; gap:5px; white-space:nowrap; cursor:pointer; color:#475569; font-weight:650; }
+.refactoring-compact input { accent-color:#b77900; margin:0; }
+.refactoring-compact.refactoring-mode-active label { color:#946000; }
+.refactoring-retry { background:transparent; border:0; padding:2px 4px; font-size:11px; color:#a16207; text-decoration:underline; cursor:pointer; }
+.refactoring-timeline-markers { height:12px; position:relative; margin:3px 8px 0; }
+.refactoring-timeline-markers button { position:absolute; top:1px; width:8px; height:8px; padding:0; border-radius:50%; border:1px solid #c68e0e; background:#ffcc42; transform:translateX(-50%); cursor:pointer; }
+.refactoring-timeline-markers button:hover,.refactoring-timeline-markers button:focus-visible { background:#d99a25; outline:2px solid #f5d78e; }
