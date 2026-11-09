@@ -12,7 +12,7 @@ import RepositoryHeader from "../components/RepositoryHeader";
 import AiSettingsPanel from "../components/ai/AiSettingsPanel";
 import MetricsExplorer from "../components/MetricsExplorer";
 
-import { getRefactoringJob, analyzeRefactoring, retryRefactoring, getRefactoringSettings, updateRefactoringSettings } from "../api/refactoring";
+import { getRefactoringJob, analyzeRefactoring, retryRefactoring, getRefactoringSettings, updateRefactoringSettings, getRefactoringCoverage, startRefactoringHistory, type RefactoringCoverage } from "../api/refactoring";
 import type { RefactoringJob } from "../types/refactoring";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
@@ -120,6 +120,34 @@ export default function RepositoryPage() {
   const visibleCommits = useMemo(() => filteredIndices.map(i => commits[i]), [commits, filteredIndices]);
   const visibleIndex = filteredIndices.indexOf(index);
   const selected = commits[index] ?? null;
+  const [refactoringCoverage, setRefactoringCoverage] = useState<RefactoringCoverage | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyStartKey = useRef<string | null>(null);
+  const coverageBySha = useMemo(() => new Map((refactoringCoverage?.commits ?? []).map(c => [c.commit_sha,c])), [refactoringCoverage]);
+  useEffect(() => {
+    if (!repoKey || !showRefactorings || !commits.length) { setRefactoringCoverage(null); historyStartKey.current = null; return; }
+    let alive = true;
+    const key = repoKey;
+    const refresh = async () => {
+      try {
+        const coverage = await getRefactoringCoverage(key);
+        if (!alive) return;
+        setRefactoringCoverage(coverage);
+        setHistoryError(null);
+        const runKey = `${key}:${commits[commits.length-1].sha}`;
+        if (historyStartKey.current !== runKey) {
+          historyStartKey.current = runKey;
+          const result = await startRefactoringHistory(key, commits[index]?.sha);
+          if (alive) setRefactoringCoverage(result);
+        }
+      } catch (err) { if (alive) setHistoryError(err instanceof Error ? err.message : "History analysis unavailable"); }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 3000);
+    return () => { alive = false; window.clearInterval(timer); };
+  // Starting a repository history job must not depend on timeline navigation.
+  }, [repoKey, showRefactorings, commits]);
+
   const setVisibleIndex = (next: number) => {
     const target = filteredIndices[next];
     if (target !== undefined) setIndex(target);
@@ -142,6 +170,10 @@ export default function RepositoryPage() {
       setRefactoringJob(null);
       setRefactoringLoading(false);
       return;
+    }
+    const metadata = coverageBySha.get(selected.sha);
+    if (!metadata || metadata.status === "PENDING" || metadata.status === "RUNNING") {
+      setRefactoringJob(null); setRefactoringLoading(false); return;
     }
     if (refactoringCache.current.has(selectedRefactoringKey)) {
       setRefactoringJob(refactoringCache.current.get(selectedRefactoringKey) ?? null);
@@ -168,7 +200,7 @@ export default function RepositoryPage() {
       if (version === refactoringRequest.current) setRefactoringLoading(false);
     });
     return () => { ++refactoringRequest.current; };
-  }, [selectedRefactoringKey, showRefactorings]);
+  }, [selectedRefactoringKey, showRefactorings, coverageBySha]);
 
   // Poll only a real pending/running job, never an absent, completed or failed analysis.
   useEffect(() => {
@@ -466,8 +498,9 @@ export default function RepositoryPage() {
           <>
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
-                refactoringMarkers={showRefactorings ? new Set(visibleCommits.flatMap(c => { const j=refactoringCache.current.get(`${repoKey}:${c.sha}`); return j?.status === "COMPLETED" && j.refactorings?.length ? [c.sha] : []; })) : undefined}
-                refactoringControl={<div className={`refactoring-compact ${showRefactorings ? "refactoring-mode-active" : ""}`}><label><input type="checkbox" checked={showRefactorings} disabled={refactoringPreferenceLoading || refactoringPreferenceSaving || !!refactoringPreferenceError} aria-label="Enable refactoring detection and visualization for this repository" onChange={e=>void changeRefactoringMode(e.target.checked)} /> <span>◆ Refactoring mode</span></label>{refactoringPreferenceLoading && <span>Loading preference…</span>}{refactoringPreferenceSaving && <span>Saving…</span>}{refactoringPreferenceError && <span role="alert" className="error">{refactoringPreferenceError} <button type="button" onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button></span>}{showRefactorings && <><button type="button" onClick={()=>void runRefactoring()} disabled={refactoringLoading || refactoringJob?.status === "RUNNING" || refactoringJob?.status === "PENDING"}>Analyze commit</button>{refactoringLoading && <span>Loading…</span>}{refactoringError && <span role="alert" className="error" title={refactoringError}>Error</span>}{refactoringJob?.status === "FAILED" && <button type="button" onClick={()=>void runRefactoring(true)}>Retry</button>}{currentRefactorings.map(r=><button type="button" key={r.id} className="refactoring-bubble" title={r.description} onClick={()=>{const loc=r.after_locations[0] ?? r.before_locations[0];if(loc?.filePath){setSelectedPath(loc.filePath);setFocus({sha:selected!.sha,path:loc.filePath,line:loc.startLine ?? 1,side:"after"});}}}>{r.type.replaceAll("_"," ")}</button>)}</>}</div>}
+                refactoringMarkers={showRefactorings ? new Map((refactoringCoverage?.commits ?? []).filter(c=>c.status === "COMPLETED" && Number(c.refactoring_count)>0).map(c=>[c.commit_sha,Number(c.refactoring_count)])) : undefined}
+                refactoringProgress={showRefactorings && refactoringCoverage ? {total:refactoringCoverage.total,completed:refactoringCoverage.completed,failed:refactoringCoverage.failed,pending:refactoringCoverage.pending} : undefined}
+                refactoringControl={<div className={`refactoring-compact ${showRefactorings ? "refactoring-mode-active" : ""}`}><label><input type="checkbox" checked={showRefactorings} disabled={refactoringPreferenceLoading || refactoringPreferenceSaving || !!refactoringPreferenceError} aria-label="Enable refactoring detection and visualization for this repository" onChange={e=>void changeRefactoringMode(e.target.checked)} /> <span>◆ Refactoring mode</span></label>{refactoringPreferenceLoading && <span>Loading preference…</span>}{refactoringPreferenceSaving && <span>Saving…</span>}{refactoringPreferenceError && <span role="alert" className="error">{refactoringPreferenceError} <button type="button" onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button></span>}{showRefactorings && <>{historyError && <span role="alert" className="error" title={historyError}>History analysis unavailable <button type="button" onClick={()=>{historyStartKey.current=null; void (async()=>{if(repoKey) {try {setRefactoringCoverage(await startRefactoringHistory(repoKey,selected?.sha));setHistoryError(null);} catch(e){setHistoryError(e instanceof Error ? e.message : "Could not retry");}}})();}}>Retry</button></span>}<button type="button" onClick={()=>void runRefactoring()} disabled={refactoringLoading || refactoringJob?.status === "RUNNING" || refactoringJob?.status === "PENDING"}>Analyze commit</button>{refactoringLoading && <span>Loading…</span>}{refactoringError && <span role="alert" className="error" title={refactoringError}>Error</span>}{refactoringJob?.status === "FAILED" && <button type="button" onClick={()=>void runRefactoring(true)}>Retry</button>}{currentRefactorings.map(r=><button type="button" key={r.id} className="refactoring-bubble" title={r.description} onClick={()=>{const loc=r.after_locations[0] ?? r.before_locations[0];if(loc?.filePath){setSelectedPath(loc.filePath);setFocus({sha:selected!.sha,path:loc.filePath,line:loc.startLine ?? 1,side:"after"});}}}>{r.type.replaceAll("_"," ")}</button>)}</>}</div>}
                 filters={<TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
               authors={authors} onAuthorsChange={setAuthors}

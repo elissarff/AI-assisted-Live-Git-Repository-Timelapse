@@ -6,6 +6,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.ObjectId;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -35,6 +40,7 @@ public class RefactoringAnalysisService {
     private final GitRepositoryService git;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final AtomicBoolean draining = new AtomicBoolean(false);
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "refactoring-miner-worker");
         t.setDaemon(true);
@@ -170,6 +176,62 @@ public class RefactoringAnalysisService {
         return jdbc.queryForList("SELECT commit_sha,status,attempts,last_error,updated_at FROM refactoring_jobs WHERE repository_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?", repo.getId(), Math.min(200, Math.max(1, limit)), Math.max(0, offset));
     }
 
+    // One request schedules the full reachable default-branch history. Jobs are cached by SHA.
+    // The preferred commit and its neighbors are queued first; remaining commits follow in batches of ten.
+    public Map<String, Object> startHistory(UUID key, String preferredSha) throws Exception {
+        RepositoryEntity repo = require(key);
+        if (!enabled(repo.getId())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Enable refactoring mode first");
+        List<String> shas = new ArrayList<>();
+        try (Repository repository = git.openRepository(Path.of(repo.getLocalGitDirectory())); Git jgit = new Git(repository)) {
+            String branch = repo.getDefaultBranch();
+            ObjectId head = branch == null ? null : repository.resolve("refs/remotes/origin/" + branch);
+            if (head == null && branch != null) head = repository.resolve("refs/heads/" + branch);
+            if (head == null) head = repository.resolve("HEAD");
+            if (head == null) return coverage(key);
+            for (RevCommit commit : jgit.log().add(head).call()) shas.add(commit.getName());
+        }
+        java.util.Collections.reverse(shas);
+        if (preferredSha != null) {
+            int position = shas.indexOf(preferredSha);
+            if (position >= 0) {
+                List<String> priority = new ArrayList<>();
+                for (int distance = 0; distance <= 5; distance++) {
+                    if (position - distance >= 0) priority.add(shas.get(position - distance));
+                    if (distance > 0 && position + distance < shas.size()) priority.add(shas.get(position + distance));
+                }
+                Set<String> seen = new HashSet<>(priority);
+                for (String sha : shas) if (seen.add(sha)) priority.add(sha);
+                shas = priority;
+            }
+        }
+        for (int start = 0; start < shas.size(); start += 10) {
+            for (String sha : shas.subList(start, Math.min(start + 10, shas.size()))) {
+                jdbc.update("INSERT INTO refactoring_jobs(repository_id,commit_sha) VALUES (?,?) ON CONFLICT DO NOTHING", repo.getId(), sha);
+            }
+        }
+        dispatch();
+        return coverage(key);
+    }
+
+    // Compact timeline metadata: no N-per-commit browser requests and no large source ranges.
+    public Map<String, Object> coverage(UUID key) {
+        RepositoryEntity repo = require(key);
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT j.commit_sha, j.status, COUNT(r.id) AS refactoring_count
+            FROM refactoring_jobs j LEFT JOIN detected_refactorings r ON r.job_id=j.id
+            WHERE j.repository_id=? GROUP BY j.id, j.commit_sha, j.status
+            ORDER BY j.created_at, j.id
+            """, repo.getId());
+        long completed=0, failed=0, pending=0;
+        for (Map<String, Object> row : rows) {
+            String status = (String)row.get("status");
+            if ("COMPLETED".equals(status)) completed++;
+            else if ("FAILED".equals(status)) failed++;
+            else pending++;
+        }
+        return Map.of("total",rows.size(),"completed",completed,"failed",failed,"pending",pending,"commits",rows);
+    }
+
     public void retry(UUID key, String sha) {
         RepositoryEntity repo = require(key);
         int count = jdbc.update("UPDATE refactoring_jobs SET status='PENDING', attempts=0,last_error=NULL,requested_explicitly=TRUE,updated_at=NOW() WHERE repository_id=? AND commit_sha=? AND status='FAILED'", repo.getId(), sha);
@@ -181,10 +243,17 @@ public class RefactoringAnalysisService {
 
     @Scheduled(fixedDelay = 15000)
     public void dispatch() {
-        worker.submit(this::processNext);
+        if (!draining.compareAndSet(false, true)) return;
+        worker.submit(() -> {
+            try {
+                while (processNext()) { /* drain pending work without 15-second gaps */ }
+            } finally {
+                draining.set(false);
+            }
+        });
     }
 
-    private void processNext() {
+    private boolean processNext() {
         // Atomic claim permits multiple application instances without duplicate execution.
         /* can be replaced with database transactions 
             1. Delete old detections
@@ -199,7 +268,7 @@ public class RefactoringAnalysisService {
                 + "UPDATE refactoring_jobs j SET status='RUNNING',attempts=attempts+1,updated_at=NOW() FROM next WHERE j.id=next.id "
                 + "RETURNING j.id,j.repository_id,j.commit_sha");
         if (claimed.isEmpty()) {
-            return;
+            return false;
         }
         Map<String, Object> item = claimed.get(0);
         long jobId = ((Number) item.get("id")).longValue();
@@ -240,5 +309,6 @@ public class RefactoringAnalysisService {
             String message = String.valueOf(e.getMessage());
             jdbc.update("UPDATE refactoring_jobs SET status='FAILED',last_error=?,updated_at=NOW() WHERE id=?", message.substring(0, Math.min(2000, message.length())), jobId);
         }
+        return true;
     }
 }

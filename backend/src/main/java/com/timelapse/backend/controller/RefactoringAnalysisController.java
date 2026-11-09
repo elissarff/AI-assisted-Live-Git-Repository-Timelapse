@@ -32,6 +32,17 @@ public class RefactoringAnalysisController {
         return service.list(repoKey, limit, offset);
     }
 
+    @GetMapping("/coverage")
+    public Map<String, Object> coverage(@PathVariable UUID repoKey) {
+        return service.coverage(repoKey);
+    }
+
+    @PostMapping("/history")
+    public Map<String, Object> history(@PathVariable UUID repoKey,
+            @RequestParam(required = false) String preferredSha) throws Exception {
+        return service.startHistory(repoKey, preferredSha);
+    }
+
     @GetMapping("/{sha}")
     public ResponseEntity<Map<String, Object>> get(@PathVariable UUID repoKey, @PathVariable String sha) {
         try {

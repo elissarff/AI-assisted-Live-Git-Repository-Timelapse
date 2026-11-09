@@ -452,3 +452,6 @@
   font-weight: 650;
   cursor: pointer;
 }
+.refactoring-analysis-track {height: 5px; background: #fff1cf; border-radius: 999px; margin: 5px 2px 0; overflow: hidden;}
+.refactoring-analysis-fill {height:100%; background:#d99a25; transition:width .25s ease;}
+.refactoring-analysis-caption {font-size:.72rem; color:#966009; margin:3px 2px 0;}

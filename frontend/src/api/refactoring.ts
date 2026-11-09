@@ -9,3 +9,7 @@ const analysisEndpoint = (repoKey: string, sha: string) => `/api/repositories/${
 export const getRefactoringJob = (repoKey: string, sha: string) => api.get<RefactoringJob>(analysisEndpoint(repoKey, sha));
 export const analyzeRefactoring = (repoKey: string, sha: string) => api.post<RefactoringJob>(analysisEndpoint(repoKey, sha));
 export const retryRefactoring = (repoKey: string, sha: string) => api.post<RefactoringJob>(`${analysisEndpoint(repoKey, sha)}/retry`);
+
+export type RefactoringCoverage = { total: number; completed: number; failed: number; pending: number; commits: Array<{commit_sha:string;status:string;refactoring_count:number}> };
+export const getRefactoringCoverage = (repoKey:string) => api.get<RefactoringCoverage>(`/api/repositories/${encodeURIComponent(repoKey)}/refactorings/coverage`);
+export const startRefactoringHistory = (repoKey:string, preferredSha?:string) => api.post<RefactoringCoverage>(`/api/repositories/${encodeURIComponent(repoKey)}/refactorings/history${preferredSha ? `?preferredSha=${encodeURIComponent(preferredSha)}` : ""}`);
