@@ -8,6 +8,7 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.transport.CredentialsProvider;
+import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.springframework.stereotype.Service;
 
@@ -53,7 +54,13 @@ public class GitRepositoryService {
 
     public void fetch(Path gitDirectory, CredentialsProvider credentials) throws Exception {
         try (Repository repository = openRepository(gitDirectory); Git git = new Git(repository)) {
-            var command = git.fetch().setRemote("origin");
+            // Bare clones can have a fetch configuration that only updates their original
+            // refs. Explicitly track every remote branch so newly created branches
+            // are discoverable after a repository sync.
+            var command = git.fetch()
+                    .setRemote("origin")
+                    .setRefSpecs(new RefSpec("+refs/heads/*:refs/remotes/origin/*"))
+                    .setRemoveDeletedRefs(true);
             if (credentials != null) {
                 command.setCredentialsProvider(credentials);
             }
@@ -88,12 +95,17 @@ public class GitRepositoryService {
     public java.util.List<String> listBranches(Path gitDirectory) throws Exception {
         try (Repository repository = openRepository(gitDirectory)) {
             java.util.Set<String> names = new java.util.TreeSet<>();
-            for (org.eclipse.jgit.lib.Ref ref : repository.getRefDatabase().getRefsByPrefix("refs/heads/")) {
-                names.add(ref.getName().substring("refs/heads/".length()));
-            }
+            // Once remote-tracking refs exist, they are the authoritative branch
+            // list. Avoid mixing in stale refs/heads left by an older bare clone.
             for (org.eclipse.jgit.lib.Ref ref : repository.getRefDatabase().getRefsByPrefix("refs/remotes/origin/")) {
                 String name = ref.getName().substring("refs/remotes/origin/".length());
                 if (!name.equals("HEAD")) names.add(name);
+            }
+            if (names.isEmpty()) {
+                // Support a freshly cloned bare repository before its first fetch.
+                for (org.eclipse.jgit.lib.Ref ref : repository.getRefDatabase().getRefsByPrefix("refs/heads/")) {
+                    names.add(ref.getName().substring("refs/heads/".length()));
+                }
             }
             return java.util.List.copyOf(names);
         }
