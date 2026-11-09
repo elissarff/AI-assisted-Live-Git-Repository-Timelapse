@@ -41,3 +41,21 @@
 .refactoring-compare-columns pre { margin:4px 0 0; padding:8px; background:#f7f7f7; overflow:auto; max-height:250px; font-size:11px; }
 .code-viewer-refactored { cursor:pointer; }
 @media(max-width:700px){.refactoring-compare-columns{grid-template-columns:1fr}}
+
+/* Amber is reserved for structural refactoring evidence; Git add/delete retain their colors. */
+.refactoring-discovery{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:9px 12px;background:#fff8e6;border-bottom:1px solid #f2cf76;font-size:12px;color:#704700}
+.refactoring-action{display:inline-flex;align-items:center;gap:8px;border:1px solid #cc8a08;background:#fff;color:#774700;border-radius:16px;padding:5px 10px;font-weight:650;cursor:pointer;box-shadow:0 1px 2px #0001}
+.refactoring-action:hover,.refactoring-action:focus-visible,.refactoring-action.is-open{background:#fbdc8a;outline:2px solid #e8ae32;outline-offset:1px}
+.refactoring-action-type{font-weight:800}
+.refactoring-inline-compare{border:2px solid #dfa52d;background:#fffcf3;padding:12px;margin:8px;border-radius:9px}
+.refactoring-compare-heading{justify-content:space-between;font-size:13px}
+.refactoring-move-summary{display:flex;align-items:center;gap:12px;margin:10px 0;padding:10px;background:#fff;border:1px solid #f0d7a0;border-radius:7px}
+.refactoring-move-summary>div{min-width:0;flex:1;display:grid;gap:5px}
+.refactoring-move-summary small{font-size:10px;font-weight:800;color:#946200}
+.refactoring-move-summary code{font-size:11px;overflow-wrap:anywhere}
+.refactoring-move-arrow{font-size:22px;color:#ba7900;font-weight:800}
+.refactoring-description{font-size:12px;color:#614a27}
+.refactoring-code-details summary{cursor:pointer;font-size:12px;font-weight:700;color:#885900;padding:7px 0}
+.code-viewer-line.code-viewer-refactored{cursor:pointer;box-shadow:inset 3px 0 #e5a520}
+.code-viewer-line.code-viewer-refactored:hover{background:#ffecb5!important;outline:1px solid #d89b20}
+@media(max-width:700px){.refactoring-move-summary{flex-direction:column;align-items:stretch}.refactoring-move-arrow{transform:rotate(90deg);text-align:center}}

@@ -9,6 +9,7 @@ type Props = {
   changes?: FileChange[];
   depth?: number;
   refactoredPaths?: string[];
+  refactoringTypes?: Record<string, string[]>;
 };
 
 function changeForPath(path: string, changes: FileChange[]) {
@@ -35,7 +36,7 @@ function directoryHasChanges(path: string, changes: FileChange[]) {
 
 
 
-function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth = 0, refactoredPaths = [] }: Props) {
+function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth = 0, refactoredPaths = [], refactoringTypes = {} }: Props) {
   const isDirectory = node.type === "DIRECTORY";
   const isRoot = depth === 0 && !node.name;
   const change = !isDirectory ? changeForPath(node.path, changes) : undefined;
@@ -82,7 +83,8 @@ function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth =
               title={node.path}
             >
               <span className="file-icon" aria-hidden="true">•</span><span className="file-name">{node.name}</span>
-              {refactoredPaths.includes(node.path) && <span className="change-badge refactored-badge">Refactored</span>}
+              {refactoredPaths.includes(node.path) && (refactoringTypes[node.path] ?? ["REFACTORING"]).slice(0, 2).map(type => <span key={type} className="change-badge refactored-badge" title="Select this file to inspect the refactoring">{type.replaceAll("_", " ")}</span>)}
+              {(refactoringTypes[node.path]?.length ?? 0) > 2 && <span className="change-badge refactored-badge">+{refactoringTypes[node.path].length - 2}</span>}
               {change && <span className={`change-badge ${changeClass}`}>{change.changeType}</span>}
             </button>
           )}
@@ -96,6 +98,7 @@ function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth =
           selectedPath={selectedPath}
           changes={changes}
           refactoredPaths={refactoredPaths}
+          refactoringTypes={refactoringTypes}
           depth={isRoot ? depth : depth + 1}
         />
       ))}

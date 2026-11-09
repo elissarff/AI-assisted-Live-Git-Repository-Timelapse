@@ -179,6 +179,7 @@ export default function RepositoryPage() {
   };
   const currentRefactorings = showRefactorings && refactoringJob?.commit_sha === selected?.sha && refactoringJob?.status === "COMPLETED" ? (refactoringJob.refactorings ?? []) : [];
   const refactoredPaths = [...new Set(currentRefactorings.flatMap(r=>[...r.before_locations,...r.after_locations].map(l=>l.filePath).filter((v):v is string=>Boolean(v))))];
+  const refactoringTypesByPath = Object.fromEntries(refactoredPaths.map(path => [path, [...new Set(currentRefactorings.filter(r => [...r.before_locations, ...r.after_locations].some(l => l.filePath === path)).map(r => r.type))]]));
   const highlightsForFile = (path:string) => currentRefactorings.flatMap(r=>[...r.before_locations.map(l=>({...l,side:"before" as const})),...r.after_locations.map(l=>({...l,side:"after" as const}))]).filter(l=>l.filePath===path && l.startLine != null).map(l=>({startLine:l.startLine!,endLine:l.endLine ?? l.startLine!,side:l.side}));
   const loadHistory = useCallback(async (repositoryId: string, preferSha?: string) => {
     const history = await getCommits(repositoryId, branch || undefined);
@@ -438,7 +439,7 @@ export default function RepositoryPage() {
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
                 refactoringMarkers={showRefactorings ? new Set(visibleCommits.flatMap(c => { const j=refactoringCache.current.get(`${repoKey}:${c.sha}`); return j?.status === "COMPLETED" && j.refactorings?.length ? [c.sha] : []; })) : undefined}
-                refactoringControl={<div className="refactoring-compact"><label><input type="checkbox" checked={showRefactorings} onChange={e=>setShowRefactorings(e.target.checked)} /> Refactorings</label>{showRefactorings && <><button type="button" onClick={()=>void runRefactoring()} disabled={refactoringLoading || refactoringJob?.status === "RUNNING" || refactoringJob?.status === "PENDING"}>Analyze</button>{refactoringLoading && <span>Loading…</span>}{refactoringError && <span role="alert" className="error" title={refactoringError}>Error</span>}{refactoringJob?.status === "FAILED" && <button type="button" onClick={()=>void runRefactoring(true)}>Retry</button>}{currentRefactorings.map(r=><button type="button" key={r.id} className="refactoring-bubble" title={r.description} onClick={()=>{const loc=r.after_locations[0] ?? r.before_locations[0];if(loc?.filePath){setSelectedPath(loc.filePath);setFocus({sha:selected!.sha,path:loc.filePath,line:loc.startLine ?? 1,side:"after"});}}}>{r.type.replaceAll("_"," ")}</button>)}</>}</div>}
+                refactoringControl={<div className={`refactoring-compact ${showRefactorings ? "refactoring-mode-active" : ""}`}><label><input type="checkbox" checked={showRefactorings} onChange={e=>setShowRefactorings(e.target.checked)} /> <span>◆ Refactoring mode</span></label>{showRefactorings && <><button type="button" onClick={()=>void runRefactoring()} disabled={refactoringLoading || refactoringJob?.status === "RUNNING" || refactoringJob?.status === "PENDING"}>Analyze commit</button>{refactoringLoading && <span>Loading…</span>}{refactoringError && <span role="alert" className="error" title={refactoringError}>Error</span>}{refactoringJob?.status === "FAILED" && <button type="button" onClick={()=>void runRefactoring(true)}>Retry</button>}{currentRefactorings.map(r=><button type="button" key={r.id} className="refactoring-bubble" title={r.description} onClick={()=>{const loc=r.after_locations[0] ?? r.before_locations[0];if(loc?.filePath){setSelectedPath(loc.filePath);setFocus({sha:selected!.sha,path:loc.filePath,line:loc.startLine ?? 1,side:"after"});}}}>{r.type.replaceAll("_"," ")}</button>)}</>}</div>}
                 filters={<TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
               authors={authors} onAuthorsChange={setAuthors}
@@ -473,7 +474,7 @@ export default function RepositoryPage() {
                   </div>
                 </div>
                 {tree ? (
-                  <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} refactoredPaths={refactoredPaths} />
+                  <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} refactoredPaths={refactoredPaths} refactoringTypes={refactoringTypesByPath} />
                 ) : <p className="muted">{loadingFrame ? "Loading commit…" : "No tree loaded."}</p>}
               </div>
               {selectedPath && <div className="workspace-resize-handle" role="separator" aria-label="Resize repository tree" aria-orientation="vertical" tabIndex={0} onPointerDown={startResize} onPointerMove={moveResize} onPointerUp={stopResize} onLostPointerCapture={stopResize} onDoubleClick={()=>updateTreeWidth(18)} onKeyDown={event=>{if(event.key==="ArrowLeft"||event.key==="ArrowRight"){event.preventDefault();updateTreeWidth(treeWidthRef.current+(event.key==="ArrowRight"?5:-5));}}}><span /></div>}
