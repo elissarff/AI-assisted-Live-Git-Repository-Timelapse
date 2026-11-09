@@ -454,3 +454,11 @@
 }
 .refactoring-analysis-track {height: 5px; background: #fff1cf; border-radius: 999px; margin: 5px 2px 0; overflow: hidden;}
 .refactoring-analysis-fill {height:100%; background:#d99a25; transition:width .25s ease;}
+
+/* Refactoring filters stay inside the existing popover, with neutral styling. */
+.history-refactoring-filter { border-top: 1px solid #e5e7eb; padding-top: 12px; display: grid; gap: 9px; }
+.history-refactoring-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: #334155; }
+.history-refactoring-heading small, .history-filter-note { color: #64748b; font-size: 11px; }
+.history-refactoring-types { max-height: 142px; overflow-y: auto; display: grid; gap: 2px; padding: 2px 0; }
+.history-refactoring-types .history-filter-author { text-transform: capitalize; }
+.history-refactoring-filter input[type="checkbox"] { accent-color: #b7791f; }

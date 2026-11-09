@@ -154,19 +154,15 @@ function FileDiff({ change, content, beforeContent, afterContent, binary, path, 
       const beforeCode = sourceExcerpt(beforeContent, before?.startLine, before?.endLine);
       const afterCode = sourceExcerpt(afterContent ?? content, after?.startLine, after?.endLine);
       const { title, summary } = friendlyRefactoring(r);
-      const showPathChange = Boolean(
-        before?.filePath &&
-        after?.filePath &&
-        before.filePath !== after.filePath
-      );
+      const moved = r.type.includes("MOVE") || r.type.includes("RENAME");
       const sameCode = Boolean(beforeCode && afterCode && beforeCode.replace(/^\d+\s+/gm, "") === afterCode.replace(/^\d+\s+/gm, ""));
       return <section className="refactoring-inline-compare" aria-label={`${title} comparison`}>
         <div className="refactoring-compare-heading">
-          <span className="refactoring-detail-badge" style={{background: "white", border: "none", padding: "0"}}>{title}</span>
-          <span className="refactoring-detail-context" title={r.description}>{summary || ""}</span>
+          <span className="refactoring-detail-badge">{title}</span>
+          <span className="refactoring-detail-context" title={r.description}>{summary || "Detected structural change"}</span>
           <button type="button" className="refactoring-dismiss" aria-label="Close refactoring details" onClick={() => setExpandedRefactoring(null)}>×</button>
         </div>
-        {showPathChange && (before?.filePath || after?.filePath) && <div className="refactoring-move-summary">
+        {moved && (before?.filePath || after?.filePath) && <div className="refactoring-move-summary">
           <div><small>From</small><code>{before?.filePath ?? "Unknown location"}</code></div>
           <span className="refactoring-move-arrow" aria-hidden="true">→</span>
           <div><small>To</small><code>{after?.filePath ?? "Unknown location"}</code></div>

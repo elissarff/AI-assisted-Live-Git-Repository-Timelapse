@@ -9,9 +9,14 @@ type Props = {
   fromDate: string; onFromDateChange: (date: string) => void;
   toDate: string; onToDateChange: (date: string) => void;
   messageQuery: string; onMessageQueryChange: (query: string) => void;
+  refactoringEnabled: boolean;
+  onlyRefactoringCommits: boolean; onOnlyRefactoringCommitsChange: (value: boolean) => void;
+  availableRefactoringTypes: string[];
+  selectedRefactoringTypes: string[]; onSelectedRefactoringTypesChange: (types: string[]) => void;
+  analysisIncomplete: boolean;
 };
 
-export default function TimelineFilters({ allCommits, matchedCount, authors, onAuthorsChange, fromDate, onFromDateChange, toDate, onToDateChange, messageQuery, onMessageQueryChange }: Props) {
+export default function TimelineFilters({ allCommits, matchedCount, authors, onAuthorsChange, fromDate, onFromDateChange, toDate, onToDateChange, messageQuery, onMessageQueryChange, refactoringEnabled, onlyRefactoringCommits, onOnlyRefactoringCommitsChange, availableRefactoringTypes, selectedRefactoringTypes, onSelectedRefactoringTypesChange, analysisIncomplete }: Props) {
   const [open, setOpen] = useState(false);
   const [authorSearch, setAuthorSearch] = useState("");
   const root = useRef<HTMLDivElement>(null);
@@ -41,8 +46,8 @@ export default function TimelineFilters({ allCommits, matchedCount, authors, onA
   }, [open]);
 
   const contributors = [...new Set(allCommits.map(c => c.author))].sort((a, b) => a.localeCompare(b));
-  const activeCount = Number(authors.length > 0) + Number(!!fromDate || !!toDate) + Number(!!messageQuery.trim());
-  const clearFilters = () => { onAuthorsChange([]); onFromDateChange(""); onToDateChange(""); onMessageQueryChange(""); };
+  const activeCount = Number(authors.length > 0) + Number(!!fromDate || !!toDate) + Number(!!messageQuery.trim()) + Number(refactoringEnabled && onlyRefactoringCommits) + Number(refactoringEnabled && selectedRefactoringTypes.length > 0);
+  const clearFilters = () => { onAuthorsChange([]); onFromDateChange(""); onToDateChange(""); onMessageQueryChange(""); onOnlyRefactoringCommitsChange(false); onSelectedRefactoringTypesChange([]); };
 
   useEffect(() => {
     if (!open) return;
@@ -65,6 +70,16 @@ export default function TimelineFilters({ allCommits, matchedCount, authors, onA
         </div>
         <div className="history-filter-dates"><div className="history-filter-field"><label htmlFor="history-from">From</label><input id="history-from" type="date" value={fromDate} max={toDate || undefined} onChange={e => onFromDateChange(e.target.value)} /></div><div className="history-filter-field"><label htmlFor="history-to">To</label><input id="history-to" type="date" value={toDate} min={fromDate || undefined} onChange={e => onToDateChange(e.target.value)} /></div></div>
         <div className="history-filter-field"><label htmlFor="history-message">Commit message</label><input id="history-message" type="search" placeholder="Search messages…" value={messageQuery} onChange={e => onMessageQueryChange(e.target.value)} /></div>
+        <div className="history-refactoring-filter">
+          <div className="history-refactoring-heading"><strong>Refactorings</strong>{!refactoringEnabled && <small>Enable Refactoring mode to filter</small>}</div>
+          <label className="history-filter-author"><input type="checkbox" checked={refactoringEnabled && onlyRefactoringCommits} disabled={!refactoringEnabled} onChange={e => onOnlyRefactoringCommitsChange(e.target.checked)} /><span>Only commits with refactorings</span></label>
+          <div className="history-refactoring-heading"><span>Types</span>{selectedRefactoringTypes.length > 0 && <button type="button" className="history-filter-clear" onClick={() => onSelectedRefactoringTypesChange([])}>All types</button>}</div>
+          <div className="history-refactoring-types">
+            {availableRefactoringTypes.map(type => <label key={type} className="history-filter-author"><input type="checkbox" disabled={!refactoringEnabled} checked={selectedRefactoringTypes.includes(type)} onChange={e => onSelectedRefactoringTypesChange(e.target.checked ? [...selectedRefactoringTypes, type] : selectedRefactoringTypes.filter(t => t !== type))} /><span>{type.replaceAll("_", " ").toLowerCase()}</span></label>)}
+            {availableRefactoringTypes.length === 0 && <small>{refactoringEnabled ? "No types detected yet" : "No refactoring data shown"}</small>}
+          </div>
+          {refactoringEnabled && analysisIncomplete && <small className="history-filter-note">Analysis is still in progress. Filters show completed results so far.</small>}
+        </div>
       </div>
       <div className="history-filter-footer"><button type="button" className="history-filter-clear" onClick={clearFilters} disabled={!activeCount}>Clear all</button><button type="button" className="history-filter-done" onClick={() => setOpen(false)}>Done</button></div>
     </div>, document.body)}

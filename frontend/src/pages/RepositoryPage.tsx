@@ -64,6 +64,8 @@ export default function RepositoryPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [messageQuery, setMessageQuery] = useState("");
+  const [onlyRefactoringCommits, setOnlyRefactoringCommits] = useState(false);
+  const [selectedRefactoringTypes, setSelectedRefactoringTypes] = useState<string[]>([]);
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const [tree, setTree] = useState<Tree | null>(null);
   const [file, setFile] = useState<FileContent | null>(null);
@@ -111,19 +113,29 @@ export default function RepositoryPage() {
   const treeWidthRef = useRef(treeWidth);
   const frameCache = useRef(new Map<string,{detail:CommitDetail;tree:Tree}>());
   const fileCache = useRef(new Map<string,FileContent|null>());
-  const filteredIndices = useMemo(() => commits.flatMap((commit, i) => {
-    const date = commit.timestamp.slice(0, 10);
-    return (authors.length === 0 || authors.includes(commit.author)) &&
-      (!fromDate || date >= fromDate) && (!toDate || date <= toDate) &&
-      commit.message.toLowerCase().includes(messageQuery.trim().toLowerCase()) ? [i] : [];
-  }), [commits, authors, fromDate, toDate, messageQuery]);
-  const visibleCommits = useMemo(() => filteredIndices.map(i => commits[i]), [commits, filteredIndices]);
-  const visibleIndex = filteredIndices.indexOf(index);
-  const selected = commits[index] ?? null;
   const [refactoringCoverage, setRefactoringCoverage] = useState<RefactoringCoverage | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyStartKey = useRef<string | null>(null);
   const coverageBySha = useMemo(() => new Map((refactoringCoverage?.commits ?? []).map(c => [c.commit_sha,c])), [refactoringCoverage]);
+  const availableRefactoringTypes = useMemo(() => [...new Set((refactoringCoverage?.commits ?? []).flatMap(c => (c.refactoring_types ?? "").split("|").filter(Boolean)))].sort(), [refactoringCoverage]);
+  const matchesRefactoringFilter = (sha: string) => {
+    if (!showRefactorings || (!onlyRefactoringCommits && selectedRefactoringTypes.length === 0)) return true;
+    const info = coverageBySha.get(sha);
+    if (!info || info.status !== "COMPLETED") return false;
+    const types = (info.refactoring_types ?? "").split("|").filter(Boolean);
+    return (!onlyRefactoringCommits || Number(info.refactoring_count) > 0) &&
+      (selectedRefactoringTypes.length === 0 || types.some(type => selectedRefactoringTypes.includes(type)));
+  };
+  const filteredIndices = useMemo(() => commits.flatMap((commit, i) => {
+    const date = commit.timestamp.slice(0, 10);
+    return (authors.length === 0 || authors.includes(commit.author)) &&
+      (!fromDate || date >= fromDate) && (!toDate || date <= toDate) &&
+      commit.message.toLowerCase().includes(messageQuery.trim().toLowerCase()) &&
+      matchesRefactoringFilter(commit.sha) ? [i] : [];
+  }), [commits, authors, fromDate, toDate, messageQuery, onlyRefactoringCommits, selectedRefactoringTypes, showRefactorings, coverageBySha]);
+  const visibleCommits = useMemo(() => filteredIndices.map(i => commits[i]), [commits, filteredIndices]);
+  const visibleIndex = filteredIndices.indexOf(index);
+  const selected = commits[index] ?? null;
   useEffect(() => {
     if (!repoKey || !showRefactorings || !commits.length) { setRefactoringCoverage(null); historyStartKey.current = null; return; }
     let alive = true;
@@ -237,7 +249,7 @@ export default function RepositoryPage() {
       if (version === refactoringRequest.current) setRefactoringLoading(false);
     }
   };
-  const currentRefactorings = showRefactorings && refactoringJob?.commit_sha === selected?.sha && refactoringJob?.status === "COMPLETED" ? (refactoringJob.refactorings ?? []) : [];
+  const currentRefactorings = showRefactorings && refactoringJob?.commit_sha === selected?.sha && refactoringJob?.status === "COMPLETED" ? (refactoringJob.refactorings ?? []).filter(r => selectedRefactoringTypes.length === 0 || selectedRefactoringTypes.includes(r.type)) : [];
   const refactoredPaths = [...new Set(currentRefactorings.flatMap(r=>[...r.before_locations,...r.after_locations].map(l=>l.filePath).filter((v):v is string=>Boolean(v))))];
   const refactoringTypesByPath = Object.fromEntries(refactoredPaths.map(path => [path, [...new Set(currentRefactorings.filter(r => [...r.before_locations, ...r.after_locations].some(l => l.filePath === path)).map(r => r.type))]]));
   const highlightsForFile = (path:string) => currentRefactorings.flatMap(r=>[...r.before_locations.map(l=>({...l,side:"before" as const})),...r.after_locations.map(l=>({...l,side:"after" as const}))]).filter(l=>l.filePath===path && l.startLine != null).map(l=>({startLine:l.startLine!,endLine:l.endLine ?? l.startLine!,side:l.side}));
@@ -498,7 +510,7 @@ export default function RepositoryPage() {
           <>
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
-                refactoringMarkers={showRefactorings ? new Map((refactoringCoverage?.commits ?? []).filter(c=>c.status === "COMPLETED" && Number(c.refactoring_count)>0).map(c=>[c.commit_sha,Number(c.refactoring_count)])) : undefined}
+                refactoringMarkers={showRefactorings ? new Map((refactoringCoverage?.commits ?? []).filter(c=>c.status === "COMPLETED" && Number(c.refactoring_count)>0 && (selectedRefactoringTypes.length===0 || (c.refactoring_types ?? "").split("|").some(t=>selectedRefactoringTypes.includes(t)))).map(c=>[c.commit_sha,Number(c.refactoring_count)])) : undefined}
                 refactoringProgress={showRefactorings && refactoringCoverage ? {total:refactoringCoverage.total,completed:refactoringCoverage.completed,failed:refactoringCoverage.failed,pending:refactoringCoverage.pending} : undefined}
                 refactoringControl={<div className={`refactoring-compact ${showRefactorings ? "refactoring-mode-active" : ""}`}>
                   <label title="Analyze repository history and show structural changes on the timeline">
@@ -514,6 +526,11 @@ export default function RepositoryPage() {
               fromDate={fromDate} onFromDateChange={setFromDate}
               toDate={toDate} onToDateChange={setToDate}
               messageQuery={messageQuery} onMessageQueryChange={setMessageQuery}
+              refactoringEnabled={showRefactorings}
+              onlyRefactoringCommits={onlyRefactoringCommits} onOnlyRefactoringCommitsChange={setOnlyRefactoringCommits}
+              availableRefactoringTypes={availableRefactoringTypes}
+              selectedRefactoringTypes={selectedRefactoringTypes} onSelectedRefactoringTypesChange={setSelectedRefactoringTypes}
+              analysisIncomplete={!!refactoringCoverage && refactoringCoverage.pending + refactoringCoverage.failed > 0}
             />}
                 commits={visibleCommits}
                 currentIndex={Math.max(0, visibleIndex)}
