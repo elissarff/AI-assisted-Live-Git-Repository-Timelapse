@@ -59,3 +59,10 @@
 .code-viewer-line.code-viewer-refactored{cursor:pointer;box-shadow:inset 3px 0 #e5a520}
 .code-viewer-line.code-viewer-refactored:hover{background:#ffecb5!important;outline:1px solid #d89b20}
 @media(max-width:700px){.refactoring-move-summary{flex-direction:column;align-items:stretch}.refactoring-move-arrow{transform:rotate(90deg);text-align:center}}
+
+/* Always-visible before/after comparison on a clean white surface. */
+.refactoring-inline-compare { background:#fff; }
+.refactoring-code-details { display:block; background:#fff; }
+.refactoring-code-title { font-size:12px; font-weight:700; color:#885900; padding:7px 0; }
+.refactoring-compare-columns > div { background:#fff; }
+.refactoring-compare-columns pre { background:#fff; border:1px solid #e5e7eb; border-radius:5px; }

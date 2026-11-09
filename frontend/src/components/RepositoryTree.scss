@@ -2,7 +2,8 @@
 
 .file-link { background: transparent; color: #0969da; padding: .2rem .35rem; border-radius: 4px; text-align: left; }
 
-.file-link:hover, .file-link.selected { background: #ddf4ff; }
+.file-link:hover { background: #f6f8fa; }
+.file-link.selected { background: transparent; }
 
 .file-link:disabled { color: #656d76; cursor: default; }
 
