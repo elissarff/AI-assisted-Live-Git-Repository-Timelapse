@@ -12,7 +12,7 @@ import RepositoryHeader from "../components/RepositoryHeader";
 import AiSettingsPanel from "../components/ai/AiSettingsPanel";
 import MetricsExplorer from "../components/MetricsExplorer";
 
-import { getRefactoringJob, analyzeRefactoring, retryRefactoring } from "../api/refactoring";
+import { getRefactoringJob, analyzeRefactoring, retryRefactoring, getRefactoringSettings, updateRefactoringSettings } from "../api/refactoring";
 import type { RefactoringJob } from "../types/refactoring";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
@@ -21,7 +21,35 @@ const BASE_PLAY_INTERVAL_MS = 1200;
 
 export default function RepositoryPage() {
   const { repoKey } = useParams();
+  // One repository-persisted preference controls both detection and visualization.
   const [showRefactorings, setShowRefactorings] = useState(false);
+  const [refactoringPreferenceLoading, setRefactoringPreferenceLoading] = useState(true);
+  const [refactoringPreferenceSaving, setRefactoringPreferenceSaving] = useState(false);
+  const [refactoringPreferenceError, setRefactoringPreferenceError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setShowRefactorings(false);
+    setRefactoringPreferenceLoading(true);
+    setRefactoringPreferenceError(null);
+    if (!repoKey) { setRefactoringPreferenceLoading(false); return; }
+    getRefactoringSettings(repoKey).then(settings => {
+      if (active) setShowRefactorings(settings.enabled);
+    }).catch(() => {
+      if (active) setRefactoringPreferenceError("Could not load refactoring preference");
+    }).finally(() => { if (active) setRefactoringPreferenceLoading(false); });
+    return () => { active = false; };
+  }, [repoKey]);
+  const changeRefactoringMode = async (enabled: boolean) => {
+    if (!repoKey || refactoringPreferenceSaving) return;
+    setRefactoringPreferenceSaving(true);
+    setRefactoringPreferenceError(null);
+    try {
+      const saved = await updateRefactoringSettings(repoKey, { enabled });
+      setShowRefactorings(saved.enabled);
+    } catch {
+      setRefactoringPreferenceError("Could not save refactoring preference");
+    } finally { setRefactoringPreferenceSaving(false); }
+  };
   const [refactoringJob, setRefactoringJob] = useState<RefactoringJob | null>(null);
   const [refactoringLoading, setRefactoringLoading] = useState(false);
   const [refactoringError, setRefactoringError] = useState<string | null>(null);
@@ -439,7 +467,7 @@ export default function RepositoryPage() {
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
                 refactoringMarkers={showRefactorings ? new Set(visibleCommits.flatMap(c => { const j=refactoringCache.current.get(`${repoKey}:${c.sha}`); return j?.status === "COMPLETED" && j.refactorings?.length ? [c.sha] : []; })) : undefined}
-                refactoringControl={<div className={`refactoring-compact ${showRefactorings ? "refactoring-mode-active" : ""}`}><label><input type="checkbox" checked={showRefactorings} onChange={e=>setShowRefactorings(e.target.checked)} /> <span>◆ Refactoring mode</span></label>{showRefactorings && <><button type="button" onClick={()=>void runRefactoring()} disabled={refactoringLoading || refactoringJob?.status === "RUNNING" || refactoringJob?.status === "PENDING"}>Analyze commit</button>{refactoringLoading && <span>Loading…</span>}{refactoringError && <span role="alert" className="error" title={refactoringError}>Error</span>}{refactoringJob?.status === "FAILED" && <button type="button" onClick={()=>void runRefactoring(true)}>Retry</button>}{currentRefactorings.map(r=><button type="button" key={r.id} className="refactoring-bubble" title={r.description} onClick={()=>{const loc=r.after_locations[0] ?? r.before_locations[0];if(loc?.filePath){setSelectedPath(loc.filePath);setFocus({sha:selected!.sha,path:loc.filePath,line:loc.startLine ?? 1,side:"after"});}}}>{r.type.replaceAll("_"," ")}</button>)}</>}</div>}
+                refactoringControl={<div className={`refactoring-compact ${showRefactorings ? "refactoring-mode-active" : ""}`}><label><input type="checkbox" checked={showRefactorings} disabled={refactoringPreferenceLoading || refactoringPreferenceSaving || !!refactoringPreferenceError} aria-label="Enable refactoring detection and visualization for this repository" onChange={e=>void changeRefactoringMode(e.target.checked)} /> <span>◆ Refactoring mode</span></label>{refactoringPreferenceLoading && <span>Loading preference…</span>}{refactoringPreferenceSaving && <span>Saving…</span>}{refactoringPreferenceError && <span role="alert" className="error">{refactoringPreferenceError} <button type="button" onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button></span>}{showRefactorings && <><button type="button" onClick={()=>void runRefactoring()} disabled={refactoringLoading || refactoringJob?.status === "RUNNING" || refactoringJob?.status === "PENDING"}>Analyze commit</button>{refactoringLoading && <span>Loading…</span>}{refactoringError && <span role="alert" className="error" title={refactoringError}>Error</span>}{refactoringJob?.status === "FAILED" && <button type="button" onClick={()=>void runRefactoring(true)}>Retry</button>}{currentRefactorings.map(r=><button type="button" key={r.id} className="refactoring-bubble" title={r.description} onClick={()=>{const loc=r.after_locations[0] ?? r.before_locations[0];if(loc?.filePath){setSelectedPath(loc.filePath);setFocus({sha:selected!.sha,path:loc.filePath,line:loc.startLine ?? 1,side:"after"});}}}>{r.type.replaceAll("_"," ")}</button>)}</>}</div>}
                 filters={<TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
               authors={authors} onAuthorsChange={setAuthors}
