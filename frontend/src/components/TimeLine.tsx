@@ -5,13 +5,15 @@ import type { Commit } from "../types/git";
 type Props = {
   commits: Commit[];
   filters?: ReactNode;
+  refactoringControl?: ReactNode;
+  refactoringMarkers?: Set<string>;
   currentIndex: number; playing: boolean; speed: number;
   onIndexChange: (index: number) => void;
   onPlayingChange: (playing: boolean) => void;
   onSpeedChange: (speed: number) => void;
 };
 const SPEEDS = [0.5, 1, 2, 4];
-export default function TimeLine({ filters, commits, currentIndex, playing, speed, onIndexChange, onPlayingChange, onSpeedChange }: Props) {
+export default function TimeLine({ filters, refactoringControl, refactoringMarkers, commits, currentIndex, playing, speed, onIndexChange, onPlayingChange, onSpeedChange }: Props) {
   const lastIndex = Math.max(0, commits.length - 1);
 
   const seek = (next: number) => { onPlayingChange(false); onIndexChange(Math.max(0, Math.min(lastIndex, next))); };
@@ -20,10 +22,11 @@ export default function TimeLine({ filters, commits, currentIndex, playing, spee
     else onPlayingChange(!playing);
   };
   return <section className="timelapse-player" aria-label="Repository history timelapse">
-    <div className="timelapse-now"><div><span className="timelapse-kicker">TIMELAPSE</span><strong>Repository history</strong></div><div className="timelapse-header-actions">{filters}<span className="timelapse-count">{commits.length ? currentIndex + 1 : 0} / {commits.length}</span></div></div>
+    <div className="timelapse-now"><div><span className="timelapse-kicker">TIMELAPSE</span><strong>Repository history</strong></div><div className="timelapse-header-actions">{filters}{refactoringControl}<span className="timelapse-count">{commits.length ? currentIndex + 1 : 0} / {commits.length}</span></div></div>
     {commits.length === 0 ? <p className="muted" role="status">No commits match these filters. Adjust or clear them to continue.</p> : <><input className="timeline-range" aria-label="Commit timeline" type="range" min={0} max={lastIndex} value={currentIndex}
       style={{ "--progress": `${lastIndex ? (currentIndex / lastIndex) * 100 : 0}%` } as React.CSSProperties}
       onChange={e => seek(Number(e.target.value))} />
+      {refactoringMarkers && <div className="refactoring-timeline-markers" aria-label="Commits with detected refactorings">{commits.map((commit,i)=>refactoringMarkers.has(commit.sha) ? <button key={commit.sha} type="button" title={`Refactoring detected: ${commit.sha.slice(0,8)}`} style={{left:`${lastIndex ? i / lastIndex * 100 : 0}%`}} onClick={()=>seek(i)} /> : null)}</div>}
       <div className="timelapse-controls">
         <div className="player-transport">
           <button type="button" className="player-button secondary" onClick={() => seek(0)} disabled={currentIndex === 0} aria-label="First commit">|‹</button>

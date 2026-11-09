@@ -11,6 +11,9 @@ import CommitSummary from "../components/CommitSummary";
 import RepositoryHeader from "../components/RepositoryHeader";
 import AiSettingsPanel from "../components/ai/AiSettingsPanel";
 import MetricsExplorer from "../components/MetricsExplorer";
+
+import { getRefactoringJob, analyzeRefactoring, retryRefactoring } from "../api/refactoring";
+import type { RefactoringJob } from "../types/refactoring";
 import type { Repository } from "../types/repository";
 import type { Commit, CommitDetail, FileChange, FileContent, RepositoryTree as Tree, RepositoryTreeNode, RepositoryMetrics } from "../types/git";
 
@@ -18,6 +21,11 @@ const BASE_PLAY_INTERVAL_MS = 1200;
 
 export default function RepositoryPage() {
   const { repoKey } = useParams();
+  const [showRefactorings, setShowRefactorings] = useState(false);
+  const [refactoringJob, setRefactoringJob] = useState<RefactoringJob | null>(null);
+  const [refactoringLoading, setRefactoringLoading] = useState(false);
+  const [refactoringError, setRefactoringError] = useState<string | null>(null);
+  const [focus, setFocus] = useState<{sha:string;path:string;line:number;side:"before"|"after"}|null>(null);
   const [repository, setRepository] = useState<Repository | null>(null);
   const [commits, setCommits] = useState<Commit[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
@@ -95,6 +103,83 @@ export default function RepositoryPage() {
       ? filteredIndices[filteredIndices.length - 1] : current);
   }, [filteredIndices]);
 
+  // Cache completed/absent analyses so timeline playback never repeatedly queries the same SHA.
+  const refactoringCache = useRef(new Map<string, RefactoringJob | null>());
+  const refactoringRequest = useRef(0);
+  const selectedRefactoringKey = repoKey && selected?.sha ? `${repoKey}:${selected.sha}` : null;
+
+  useEffect(() => {
+    const version = ++refactoringRequest.current;
+    if (!showRefactorings || !selectedRefactoringKey || !repoKey || !selected?.sha) {
+      setRefactoringJob(null);
+      setRefactoringLoading(false);
+      return;
+    }
+    if (refactoringCache.current.has(selectedRefactoringKey)) {
+      setRefactoringJob(refactoringCache.current.get(selectedRefactoringKey) ?? null);
+      setRefactoringError(null);
+      setRefactoringLoading(false);
+      return;
+    }
+    setRefactoringJob(null);
+    setRefactoringError(null);
+    setRefactoringLoading(true);
+    void getRefactoringJob(repoKey, selected.sha).then(job => {
+      if (version !== refactoringRequest.current) return;
+      const result = job ?? null;
+      refactoringCache.current.set(selectedRefactoringKey, result);
+      setRefactoringJob(result);
+    }).catch((err: unknown) => {
+      if (version !== refactoringRequest.current) return;
+      if (err instanceof Error && "status" in err && err.status === 404) {
+        refactoringCache.current.set(selectedRefactoringKey, null);
+      } else {
+        setRefactoringError(err instanceof Error ? err.message : "Could not load refactorings");
+      }
+    }).finally(() => {
+      if (version === refactoringRequest.current) setRefactoringLoading(false);
+    });
+    return () => { ++refactoringRequest.current; };
+  }, [selectedRefactoringKey, showRefactorings]);
+
+  // Poll only a real pending/running job, never an absent, completed or failed analysis.
+  useEffect(() => {
+    if (!showRefactorings || !repoKey || !selected?.sha || !selectedRefactoringKey ||
+        refactoringJob?.commit_sha !== selected.sha ||
+        (refactoringJob.status !== "PENDING" && refactoringJob.status !== "RUNNING")) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void getRefactoringJob(repoKey, selected.sha).then(job => {
+        if (!active) return;
+        const result = job ?? null;
+        refactoringCache.current.set(selectedRefactoringKey, result);
+        setRefactoringJob(result);
+      }).catch((err: unknown) => {
+        if (active) setRefactoringError(err instanceof Error ? err.message : "Could not refresh analysis");
+      });
+    }, 5000);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [showRefactorings, repoKey, selected?.sha, selectedRefactoringKey, refactoringJob]);
+
+  const runRefactoring = async (retry=false) => {
+    if (!repoKey || !selected || !selectedRefactoringKey) return;
+    const sha = selected.sha;
+    const key = selectedRefactoringKey;
+    const version = refactoringRequest.current;
+    setRefactoringLoading(true); setRefactoringError(null);
+    try {
+      const job = await (retry ? retryRefactoring(repoKey, sha) : analyzeRefactoring(repoKey, sha));
+      refactoringCache.current.set(key, job);
+      if (version === refactoringRequest.current) setRefactoringJob(job);
+    } catch (err) {
+      if (version === refactoringRequest.current) setRefactoringError(err instanceof Error ? err.message : "Analysis request failed");
+    } finally {
+      if (version === refactoringRequest.current) setRefactoringLoading(false);
+    }
+  };
+  const currentRefactorings = showRefactorings && refactoringJob?.commit_sha === selected?.sha && refactoringJob?.status === "COMPLETED" ? (refactoringJob.refactorings ?? []) : [];
+  const refactoredPaths = [...new Set(currentRefactorings.flatMap(r=>[...r.before_locations,...r.after_locations].map(l=>l.filePath).filter((v):v is string=>Boolean(v))))];
+  const highlightsForFile = (path:string) => currentRefactorings.flatMap(r=>[...r.before_locations.map(l=>({...l,side:"before" as const})),...r.after_locations.map(l=>({...l,side:"after" as const}))]).filter(l=>l.filePath===path && l.startLine != null).map(l=>({startLine:l.startLine!,endLine:l.endLine ?? l.startLine!,side:l.side}));
   const loadHistory = useCallback(async (repositoryId: string, preferSha?: string) => {
     const history = await getCommits(repositoryId, branch || undefined);
     setCommits(history);
@@ -352,6 +437,8 @@ export default function RepositoryPage() {
           <>
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
+                refactoringMarkers={showRefactorings ? new Set(visibleCommits.flatMap(c => { const j=refactoringCache.current.get(`${repoKey}:${c.sha}`); return j?.status === "COMPLETED" && j.refactorings?.length ? [c.sha] : []; })) : undefined}
+                refactoringControl={<div className="refactoring-compact"><label><input type="checkbox" checked={showRefactorings} onChange={e=>setShowRefactorings(e.target.checked)} /> Refactorings</label>{showRefactorings && <><button type="button" onClick={()=>void runRefactoring()} disabled={refactoringLoading || refactoringJob?.status === "RUNNING" || refactoringJob?.status === "PENDING"}>Analyze</button>{refactoringLoading && <span>Loading…</span>}{refactoringError && <span role="alert" className="error" title={refactoringError}>Error</span>}{refactoringJob?.status === "FAILED" && <button type="button" onClick={()=>void runRefactoring(true)}>Retry</button>}{currentRefactorings.map(r=><button type="button" key={r.id} className="refactoring-bubble" title={r.description} onClick={()=>{const loc=r.after_locations[0] ?? r.before_locations[0];if(loc?.filePath){setSelectedPath(loc.filePath);setFocus({sha:selected!.sha,path:loc.filePath,line:loc.startLine ?? 1,side:"after"});}}}>{r.type.replaceAll("_"," ")}</button>)}</>}</div>}
                 filters={<TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
               authors={authors} onAuthorsChange={setAuthors}
@@ -369,6 +456,7 @@ export default function RepositoryPage() {
               />
 
               <CommitSummary commit={selected} detail={detail?.sha === selected?.sha ? detail : null} />
+
             </section>
 
             <section ref={workspaceRef} className={`workspace-resizable ${!selectedPath ? "tree-only" : ""} ${treeHidden ? "tree-hidden" : ""}`} style={{"--tree-width":`${treeWidth}%`} as React.CSSProperties}>
@@ -385,7 +473,7 @@ export default function RepositoryPage() {
                   </div>
                 </div>
                 {tree ? (
-                  <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} />
+                  <RepositoryTree node={tree.root} onFileClick={openFile} selectedPath={selectedPath ?? undefined} changes={detail?.sha === selected?.sha ? detail.files : []} refactoredPaths={refactoredPaths} />
                 ) : <p className="muted">{loadingFrame ? "Loading commit…" : "No tree loaded."}</p>}
               </div>
               {selectedPath && <div className="workspace-resize-handle" role="separator" aria-label="Resize repository tree" aria-orientation="vertical" tabIndex={0} onPointerDown={startResize} onPointerMove={moveResize} onPointerUp={stopResize} onLostPointerCapture={stopResize} onDoubleClick={()=>updateTreeWidth(18)} onKeyDown={event=>{if(event.key==="ArrowLeft"||event.key==="ArrowRight"){event.preventDefault();updateTreeWidth(treeWidthRef.current+(event.key==="ArrowRight"?5:-5));}}}><span /></div>}
@@ -400,11 +488,11 @@ export default function RepositoryPage() {
                       <>
                         <p className="muted"><strong>{displayedFileFrame.change.changeType}</strong> · +{displayedFileFrame.change.additions} / -{displayedFileFrame.change.deletions}
                         {displayedFileFrame.change.changeType === "RENAME" && displayedFileFrame.change.oldPath ? ` · from ${displayedFileFrame.change.oldPath}` : ""}</p>
-                        <FileDiff path={selectedPath ?? undefined} change={displayedFileFrame.change} beforeContent={displayedFileFrame.before?.content} afterContent={displayedFileFrame.after?.content} />
+                        <FileDiff path={selectedPath ?? undefined} highlights={highlightsForFile(selectedPath)} refactorings={currentRefactorings.filter(r=>[...r.before_locations,...r.after_locations].some(l=>l.filePath===selectedPath))} focusLine={focus?.sha === displayedFileFrame.sha && focus.path === selectedPath ? focus.line : undefined} focusSide={focus?.side} change={displayedFileFrame.change} beforeContent={displayedFileFrame.before?.content} afterContent={displayedFileFrame.after?.content} />
                       </>
                     ) : displayedFileFrame.after ? (
                       <><p className="muted">Unchanged in this commit · {displayedFileFrame.after.size} bytes · {displayedFileFrame.after.commitSha.slice(0, 12)}</p>
-                      <FileDiff path={selectedPath ?? undefined} content={displayedFileFrame.after.content} binary={displayedFileFrame.after.binary} /></>
+                      <FileDiff path={selectedPath ?? undefined} highlights={highlightsForFile(selectedPath)} refactorings={currentRefactorings.filter(r=>[...r.before_locations,...r.after_locations].some(l=>l.filePath===selectedPath))} focusLine={focus?.sha === displayedFileFrame.sha && focus.path === selectedPath ? focus.line : undefined} focusSide={focus?.side} content={displayedFileFrame.after.content} binary={displayedFileFrame.after.binary} /></>
                     ) : displayedFileFrame.unavailable ? (
                       <div className="file-unavailable"><h3>File unavailable at this commit</h3><p className="muted">Playback will continue and the file will appear when it exists.</p></div>
                     ) : <p className="muted">No file content at this commit.</p>}

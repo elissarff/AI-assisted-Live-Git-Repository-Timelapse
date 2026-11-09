@@ -1,5 +1,6 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import "./FileDiff.scss";
+import type { DetectedRefactoring } from "../types/refactoring";
 import type { DiffHunk, DiffLine, FileChange } from "../types/git";
 
 type Props = {
@@ -9,6 +10,10 @@ type Props = {
   afterContent?: string | null;
   binary?: boolean;
   path?: string;
+  refactorings?: DetectedRefactoring[];
+  highlights?: Array<{startLine: number; endLine: number; side: "before" | "after"}>;
+  focusLine?: number;
+  focusSide?: "before" | "after";
 };
 type Mark = "add" | "delete" | "context";
 type Row = { kind: Mark; text: string; oldNo?: number; newNo?: number };
@@ -31,7 +36,7 @@ function parseHunk(hunk: DiffHunk) {
     const newNo = line?.newLineNumber ?? line?.newLine ?? (kind !== "delete" ? newCursor : undefined);
     if (kind !== "add") oldCursor = (oldNo ?? oldCursor) + 1;
     if (kind !== "delete") newCursor = (newNo ?? newCursor) + 1;
-    return { kind, oldNo, newNo };
+    return { kind, text, oldNo, newNo };
   });
 }
 function splitLines(value?: string | null) {
@@ -67,8 +72,9 @@ function evolution(change: FileChange, beforeContent?: string | null, afterConte
   return rows.length ? rows : before.map((text, i) => ({ kind: "context", text, oldNo: i + 1 }));
 }
 
-function FileDiff({ change, content, beforeContent, afterContent, binary, path }: Props) {
+function FileDiff({ change, content, beforeContent, afterContent, binary, path, highlights = [], refactorings = [], focusLine, focusSide = "after" }: Props) {
   const [mode, setMode] = useState<"code" | "diff">("diff");
+  const [expandedRefactoring, setExpandedRefactoring] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const isBinary = binary ?? change?.binary ?? false;
   const raw = content ?? afterContent ?? (change?.changeType === "DELETE" ? beforeContent : afterContent) ?? "";
@@ -77,6 +83,11 @@ function FileDiff({ change, content, beforeContent, afterContent, binary, path }
     if (mode === "diff" && canDiff && change) return evolution(change, beforeContent, afterContent ?? content);
     return splitLines(raw).map((text, i): Row => ({ kind: "context", text, newNo: i + 1 }));
   }, [mode, canDiff, change, beforeContent, afterContent, content, raw]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusLine == null) return;
+    scrollRef.current?.querySelector(`[data-source-line="${focusSide}-${focusLine}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusLine, focusSide, rows]);
   const rawLines = splitLines(raw);
   const loc = rawLines.filter(line => line.trim()).length;
   const size = new TextEncoder().encode(raw).length;
@@ -109,10 +120,11 @@ function FileDiff({ change, content, beforeContent, afterContent, binary, path }
         <button type="button" className="code-viewer-action" title="Download file" onClick={download}>Download</button>
       </div>
     </div>
+    {expandedRefactoring !== null && (() => { const r=refactorings.find(item=>item.id===expandedRefactoring); if(!r)return null; const before=r.before_locations.find(l=>l.filePath===change?.oldPath || l.filePath===displayPath) ?? r.before_locations[0]; const after=r.after_locations.find(l=>l.filePath===displayPath) ?? r.after_locations[0]; const excerpt=(source:string|undefined|null,start?:number,end?:number)=>splitLines(source).slice(Math.max(0,(start??1)-1),Math.max(start??1,end??start??1)).map((line,i)=>`${(start??1)+i}  ${line}`).join("\n"); return <div className="refactoring-inline-compare"><div className="refactoring-compare-heading"><strong>{r.type.replaceAll("_"," ")}</strong><span title={r.description}>{r.description}</span><button type="button" onClick={()=>setExpandedRefactoring(null)}>Close ×</button></div><div className="refactoring-compare-columns"><div><strong>Before · {before?.startLine ?? "?"}–{before?.endLine ?? "?"}</strong><pre>{excerpt(beforeContent,before?.startLine,before?.endLine) || "Before source unavailable"}</pre></div><div><strong>After · {after?.startLine ?? "?"}–{after?.endLine ?? "?"}</strong><pre>{excerpt(afterContent ?? content,after?.startLine,after?.endLine) || "After source unavailable"}</pre></div></div></div>; })()}
     {mode === "diff" && canDiff && <div className="code-viewer-legend"><span><b className="legend-add">+</b> Added</span><span><b className="legend-delete">−</b> Removed</span></div>}
     {isBinary ? <div className="code-viewer-empty">Binary file preview is unavailable.</div> :
-      <div className="code-viewer-scroll" role="table" aria-label={mode === "diff" ? "File changes" : "File source code"}>
-        {rows.length ? rows.map((row, i) => <div role="row" className={`code-viewer-line code-viewer-${row.kind}`} key={i}>
+      <div ref={scrollRef} className="code-viewer-scroll" role="table" aria-label={mode === "diff" ? "File changes" : "File source code"}>
+        {rows.length ? rows.map((row, i) => <div onClick={() => { const match=refactorings.find(r=>[...r.before_locations.map(l=>({...l,side:"before"})),...r.after_locations.map(l=>({...l,side:"after"}))].some(l=>{const no=l.side==="before"?row.oldNo:row.newNo;return no!=null && no>=(l.startLine??Infinity) && no<=(l.endLine??l.startLine??-1) && (l.filePath===displayPath || l.filePath===change?.oldPath);}));if(match)setExpandedRefactoring(expandedRefactoring===match.id?null:match.id);}} role="row" className={`code-viewer-line code-viewer-${row.kind} ${highlights.some(h => (h.side === "before" ? row.oldNo : row.newNo) != null && (h.side === "before" ? row.oldNo! : row.newNo!) >= h.startLine && (h.side === "before" ? row.oldNo! : row.newNo!) <= h.endLine) ? "code-viewer-refactored" : ""}`} data-source-line={`${row.oldNo != null ? "before" : "after"}-${row.oldNo ?? row.newNo}`} key={i}>
           <span className="code-viewer-line-number">{row.oldNo ?? row.newNo ?? ""}</span>
           <span className="code-viewer-line-marker">{mode === "diff" ? row.kind === "add" ? "+" : row.kind === "delete" ? "−" : "" : ""}</span>
           <code>{row.text || " "}</code>

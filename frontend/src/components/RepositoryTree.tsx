@@ -8,6 +8,7 @@ type Props = {
   selectedPath?: string;
   changes?: FileChange[];
   depth?: number;
+  refactoredPaths?: string[];
 };
 
 function changeForPath(path: string, changes: FileChange[]) {
@@ -34,7 +35,7 @@ function directoryHasChanges(path: string, changes: FileChange[]) {
 
 
 
-function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth = 0 }: Props) {
+function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth = 0, refactoredPaths = [] }: Props) {
   const isDirectory = node.type === "DIRECTORY";
   const isRoot = depth === 0 && !node.name;
   const change = !isDirectory ? changeForPath(node.path, changes) : undefined;
@@ -81,6 +82,7 @@ function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth =
               title={node.path}
             >
               <span className="file-icon" aria-hidden="true">•</span><span className="file-name">{node.name}</span>
+              {refactoredPaths.includes(node.path) && <span className="change-badge refactored-badge">Refactored</span>}
               {change && <span className={`change-badge ${changeClass}`}>{change.changeType}</span>}
             </button>
           )}
@@ -93,6 +95,7 @@ function RepositoryTree({ node, onFileClick, selectedPath, changes = [], depth =
           onFileClick={onFileClick}
           selectedPath={selectedPath}
           changes={changes}
+          refactoredPaths={refactoredPaths}
           depth={isRoot ? depth : depth + 1}
         />
       ))}

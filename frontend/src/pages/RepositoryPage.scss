@@ -165,3 +165,11 @@
     height: clamp(260px, 46vh, 500px);
   }
 }
+
+/* Optional, compact refactoring overlay */
+.refactoring-compact { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12px; }
+.refactoring-compact label { white-space:nowrap; cursor:pointer; }
+.refactoring-compact button { padding:3px 7px; font-size:11px; }
+.refactoring-bubble { border:1px solid #d7a42c; border-radius:14px; background:#fff5cf; color:#654800; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.refactoring-timeline-markers { height:12px; position:relative; margin:0 8px; }
+.refactoring-timeline-markers button { position:absolute; top:0; width:9px; height:9px; padding:0; border-radius:50%; border:1px solid #c68e0e; background:#ffcc42; transform:translateX(-50%); cursor:pointer; }
