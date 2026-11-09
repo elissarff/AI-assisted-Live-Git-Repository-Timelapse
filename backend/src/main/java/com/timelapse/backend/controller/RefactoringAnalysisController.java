@@ -5,6 +5,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,8 +33,15 @@ public class RefactoringAnalysisController {
     }
 
     @GetMapping("/{sha}")
-    public Map<String, Object> get(@PathVariable UUID repoKey, @PathVariable String sha) {
-        return service.job(repoKey, sha);
+    public ResponseEntity<Map<String, Object>> get(@PathVariable UUID repoKey, @PathVariable String sha) {
+        try {
+            return ResponseEntity.ok(service.job(repoKey, sha));
+        } catch (ResponseStatusException ex) {
+            if (ex.getStatusCode().value() == 404 && "No analysis for commit".equals(ex.getReason())) {
+                return ResponseEntity.noContent().build();
+            }
+            throw ex;
+        }
     }
 
     @PostMapping("/{sha}")

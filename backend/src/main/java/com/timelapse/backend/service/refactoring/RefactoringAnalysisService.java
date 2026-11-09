@@ -57,6 +57,8 @@ public class RefactoringAnalysisService {
 
     public Map<String, Object> request(UUID key, String sha, boolean explicit) throws Exception {
         RepositoryEntity repo = require(key);
+        // ensures auto-enablement of the refactoring miner for this repository
+        // manually requested works
         if (!explicit && !enabled(repo.getId())) {
             return Map.of("status", "DISABLED");
         }
@@ -66,14 +68,6 @@ public class RefactoringAnalysisService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid commit SHA");
             }
             walk.parseCommit(id);
-            // Ensure the requested SHA is reachable from the tracked default branch.
-            var head = repository.resolve("refs/remotes/origin/" + repo.getDefaultBranch());
-            if (head == null) {
-                head = repository.resolve("refs/heads/" + repo.getDefaultBranch());
-            }
-            if (head == null || !walk.isMergedInto(walk.parseCommit(id), walk.parseCommit(head))) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Commit not reachable from tracked branch");
-            }
         }
         jdbc.update("INSERT INTO refactoring_jobs(repository_id,commit_sha,requested_explicitly) VALUES (?,?,?) "
                 + "ON CONFLICT(repository_id,commit_sha) DO UPDATE SET requested_explicitly = refactoring_jobs.requested_explicitly OR EXCLUDED.requested_explicitly",
@@ -192,6 +186,11 @@ public class RefactoringAnalysisService {
 
     private void processNext() {
         // Atomic claim permits multiple application instances without duplicate execution.
+        /* can be replaced with database transactions 
+            1. Delete old detections
+            2. Insert all new detections
+            3. Mark job COMPLETED
+        */
         List<Map<String, Object>> claimed = jdbc.queryForList("WITH next AS (SELECT j.id FROM refactoring_jobs j "
                 + "LEFT JOIN refactoring_repository_settings s ON s.repository_id=j.repository_id "
                 + "WHERE (j.status='PENDING' OR (j.status='FAILED' AND j.attempts<3 AND j.updated_at < NOW()-INTERVAL '2 minutes') "
