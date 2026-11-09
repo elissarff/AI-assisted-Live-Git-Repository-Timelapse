@@ -217,7 +217,8 @@ public class RefactoringAnalysisService {
     public Map<String, Object> coverage(UUID key) {
         RepositoryEntity repo = require(key);
         List<Map<String, Object>> rows = jdbc.queryForList("""
-            SELECT j.commit_sha, j.status, COUNT(r.id) AS refactoring_count
+            SELECT j.commit_sha, j.status, COUNT(r.id) AS refactoring_count,
+                   COALESCE(string_agg(DISTINCT r.type, '|'), '') AS refactoring_types
             FROM refactoring_jobs j LEFT JOIN detected_refactorings r ON r.job_id=j.id
             WHERE j.repository_id=? GROUP BY j.id, j.commit_sha, j.status
             ORDER BY j.created_at, j.id

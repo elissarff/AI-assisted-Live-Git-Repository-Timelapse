@@ -116,6 +116,8 @@ export default function RepositoryPage() {
   const [refactoringCoverage, setRefactoringCoverage] = useState<RefactoringCoverage | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyStartKey = useRef<string | null>(null);
+  const [historyRefreshVersion, setHistoryRefreshVersion] = useState(0);
+  const historyHeadSha = commits[commits.length - 1]?.sha;
   const coverageBySha = useMemo(() => new Map((refactoringCoverage?.commits ?? []).map(c => [c.commit_sha,c])), [refactoringCoverage]);
   const availableRefactoringTypes = useMemo(() => [...new Set((refactoringCoverage?.commits ?? []).flatMap(c => (c.refactoring_types ?? "").split("|").filter(Boolean)))].sort(), [refactoringCoverage]);
   const matchesRefactoringFilter = (sha: string) => {
@@ -137,28 +139,52 @@ export default function RepositoryPage() {
   const visibleIndex = filteredIndices.indexOf(index);
   const selected = commits[index] ?? null;
   useEffect(() => {
-    if (!repoKey || !showRefactorings || !commits.length) { setRefactoringCoverage(null); historyStartKey.current = null; return; }
+    if (!repoKey || !showRefactorings || !historyHeadSha) {
+      setRefactoringCoverage(null);
+      historyStartKey.current = null;
+      return;
+    }
+
     let alive = true;
+    let timer: number | undefined;
     const key = repoKey;
-    const refresh = async () => {
+    const runKey = `${key}:${historyHeadSha}`;
+
+    // One request at a time. Schedule the next refresh only while jobs are active;
+    // completed history is kept in React state without further network traffic.
+    const poll = async () => {
       try {
         const coverage = await getRefactoringCoverage(key);
         if (!alive) return;
         setRefactoringCoverage(coverage);
         setHistoryError(null);
-        const runKey = `${key}:${commits[commits.length-1].sha}`;
+
+        let latest = coverage;
         if (historyStartKey.current !== runKey) {
+          // Mark before awaiting to prevent duplicate POSTs from concurrent renders.
           historyStartKey.current = runKey;
-          const result = await startRefactoringHistory(key, commits[index]?.sha);
-          if (alive) setRefactoringCoverage(result);
+          try {
+            latest = await startRefactoringHistory(key);
+          } catch (err) {
+            if (alive) setHistoryError(err instanceof Error ? err.message : "History analysis unavailable");
+            return;
+          }
+          if (!alive) return;
+          setRefactoringCoverage(latest);
         }
-      } catch (err) { if (alive) setHistoryError(err instanceof Error ? err.message : "History analysis unavailable"); }
+
+        if (latest.pending > 0) {
+          timer = window.setTimeout(() => void poll(), 3000);
+        }
+      } catch (err) {
+        if (alive) setHistoryError(err instanceof Error ? err.message : "History analysis unavailable");
+      }
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 3000);
-    return () => { alive = false; window.clearInterval(timer); };
-  // Starting a repository history job must not depend on timeline navigation.
-  }, [repoKey, showRefactorings, commits]);
+
+    void poll();
+    return () => { alive = false; if (timer !== undefined) window.clearTimeout(timer); };
+    // Commit selection, playback, and filters must not restart repository polling.
+  }, [repoKey, showRefactorings, historyHeadSha, historyRefreshVersion]);
 
   const setVisibleIndex = (next: number) => {
     const target = filteredIndices[next];
@@ -518,7 +544,7 @@ export default function RepositoryPage() {
                     <span>◆ Refactoring</span>
                   </label>
                   {refactoringPreferenceError && <button type="button" className="refactoring-retry" title={refactoringPreferenceError} onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button>}
-                  {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={()=>{historyStartKey.current=null; void (async()=>{if(repoKey) {try {setRefactoringCoverage(await startRefactoringHistory(repoKey,selected?.sha));setHistoryError(null);} catch(e){setHistoryError(e instanceof Error ? e.message : "Could not retry");}}})();}}>Retry analysis</button>}
+                  {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={()=>{historyStartKey.current=null; void (async()=>{if(repoKey) {try {setRefactoringCoverage(await startRefactoringHistory(repoKey,selected?.sha));setHistoryError(null);setHistoryRefreshVersion(v=>v+1);} catch(e){setHistoryError(e instanceof Error ? e.message : "Could not retry");}}})();}}>Retry analysis</button>}
                 </div>}
                 filters={<TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
