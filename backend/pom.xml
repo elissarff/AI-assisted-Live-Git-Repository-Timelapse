@@ -58,7 +58,7 @@
 		<dependency>
 			<groupId>com.github.tsantalis</groupId>
 			<artifactId>refactoring-miner</artifactId>
-			<version>3.0.11</version>
+    		<version>3.1.6</version>
 		</dependency>
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>

@@ -2,24 +2,28 @@ package com.timelapse.backend.service.refactoring;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.Set;
-import java.util.HashSet;
-import java.util.concurrent.atomic.AtomicBoolean;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.lib.ObjectId;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.refactoringminer.api.Refactoring;
 import org.refactoringminer.api.RefactoringHandler;
 import org.refactoringminer.rm1.GitHistoryRefactoringMinerImpl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,6 +38,7 @@ import com.timelapse.backend.service.git.GitRepositoryService;
 
 @Service
 public class RefactoringAnalysisService {
+    private static final Logger log = LoggerFactory.getLogger(RefactoringAnalysisService.class);
 
     private final RepositoryJpaRepository repositories;
     private final RefactoringRepositorySettingsJpaRepository settings;
@@ -272,6 +277,10 @@ public class RefactoringAnalysisService {
         });
     }
 
+    private static long elapsedMs(long startedNanos) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
+    }
+
     private boolean processNext() {
         // Atomic claim permits multiple application instances without duplicate execution.
         /* can be replaced with database transactions 
@@ -291,29 +300,62 @@ public class RefactoringAnalysisService {
         }
         Map<String, Object> item = claimed.get(0);
         long jobId = ((Number) item.get("id")).longValue();
+        long repositoryId = ((Number) item.get("repository_id")).longValue();
+        String sha = (String) item.get("commit_sha");
+        long startedNanos = System.nanoTime();
+        log.info("Refactoring analysis started: jobId={} repositoryId={} sha={}", jobId, repositoryId, sha);
         try {
-            RepositoryEntity repo = repositories.findById(((Number) item.get("repository_id")).longValue()).orElseThrow();
-            String sha = (String) item.get("commit_sha");
+            RepositoryEntity repo = repositories.findById(repositoryId).orElseThrow();
             // RefactoringMiner uses JGit directly; Git stays authoritative.
-            try (Repository repository = git.openRepository(Path.of(repo.getLocalGitDirectory())); RevWalk walk = new RevWalk(repository)) {
-                RevCommit commit = walk.parseCommit(repository.resolve(sha));
+            try (Repository repository = git.openRepository(Path.of(repo.getLocalGitDirectory()));
+                 RevWalk walk = new RevWalk(repository)) {
+                ObjectId commitId = repository.resolve(sha);
+                if (commitId == null) throw new IllegalStateException("Commit not found in local clone: " + sha);
+                RevCommit commit = walk.parseCommit(commitId);
                 if (commit.getParentCount() == 0) {
+                    // A root commit has no parent for RefactoringMiner to compare against.
+                    log.info("Refactoring analysis skipped root commit: jobId={} sha={}", jobId, sha);
                     jdbc.update("DELETE FROM detected_refactorings WHERE job_id=?", jobId);
                 } else {
-                    // detectAtCommit analyzes the commit against its parent(s) in RefactoringMiner.
                     var miner = new GitHistoryRefactoringMinerImpl();
                     List<Refactoring> detected = new ArrayList<>();
+                    AtomicInteger callbackCount = new AtomicInteger();
+                    AtomicReference<Exception> minerError = new AtomicReference<>();
                     miner.detectAtCommit(repository, sha, new RefactoringHandler() {
                         @Override
                         public void handle(String commitId, List<Refactoring> refactorings) {
+                            callbackCount.incrementAndGet();
+                            if (!sha.equals(commitId)) {
+                                minerError.compareAndSet(null, new IllegalStateException(
+                                        "RefactoringMiner returned unexpected commit " + commitId + " for " + sha));
+                                return;
+                            }
+                            if (refactorings == null) {
+                                minerError.compareAndSet(null, new IllegalStateException(
+                                        "RefactoringMiner returned null refactoring list for " + sha));
+                                return;
+                            }
                             detected.addAll(refactorings);
                         }
 
                         @Override
                         public void handleException(String commitId, Exception e) {
-                            throw new IllegalStateException("RefactoringMiner failed at " + commitId, e);
+                            // Do not rely on exceptions thrown inside the handler propagating
+                            // through RefactoringMiner: retain the failure and check it afterward.
+                            minerError.compareAndSet(null, e);
+                            log.error("RefactoringMiner callback failed: jobId={} sha={} callbackCommit={}",
+                                    jobId, sha, commitId, e);
                         }
                     });
+                    if (minerError.get() != null) {
+                        throw new IllegalStateException("RefactoringMiner failed for " + sha, minerError.get());
+                    }
+                    if (callbackCount.get() != 1) {
+                        throw new IllegalStateException("RefactoringMiner returned " + callbackCount.get()
+                                + " success callbacks for " + sha + " (expected exactly one)");
+                    }
+                    // An empty result is valid only after a successful callback.
+                    // Persist results before marking the job completed.
                     jdbc.update("DELETE FROM detected_refactorings WHERE job_id=?", jobId);
                     String parent = commit.getParent(0).getName();
                     for (Refactoring r : detected) {
@@ -325,8 +367,15 @@ public class RefactoringAnalysisService {
             }
             jdbc.update("UPDATE refactoring_jobs SET status='COMPLETED',last_error=NULL,updated_at=NOW() WHERE id=?", jobId);
         } catch (Exception e) {
-            String message = String.valueOf(e.getMessage());
-            jdbc.update("UPDATE refactoring_jobs SET status='FAILED',last_error=?,updated_at=NOW() WHERE id=?", message.substring(0, Math.min(2000, message.length())), jobId);
+            log.error("Refactoring analysis failed: jobId={} repositoryId={} sha={} elapsedMs={}",
+                    jobId, repositoryId, sha, elapsedMs(startedNanos), e);
+            String message = e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage());
+            try {
+                jdbc.update("UPDATE refactoring_jobs SET status='FAILED',last_error=?,updated_at=NOW() WHERE id=?",
+                        message.substring(0, Math.min(2000, message.length())), jobId);
+            } catch (Exception updateError) {
+                log.error("Unable to persist failed status: jobId={} sha={}", jobId, sha, updateError);
+            }
         }
         return true;
     }
