@@ -154,7 +154,7 @@ function FileDiff({ change, content, beforeContent, afterContent, binary, path, 
       const beforeCode = sourceExcerpt(beforeContent, before?.startLine, before?.endLine);
       const afterCode = sourceExcerpt(afterContent ?? content, after?.startLine, after?.endLine);
       const { title, summary } = friendlyRefactoring(r);
-      const moved = r.type.includes("MOVE") || r.type.includes("RENAME");
+      const moved = r.type.includes("MOVE") || r.type.includes("RENAME"); // change to only when before and after location change
       const sameCode = Boolean(beforeCode && afterCode && beforeCode.replace(/^\d+\s+/gm, "") === afterCode.replace(/^\d+\s+/gm, ""));
       return <section className="refactoring-inline-compare" aria-label={`${title} comparison`}>
         <div className="refactoring-compare-heading">

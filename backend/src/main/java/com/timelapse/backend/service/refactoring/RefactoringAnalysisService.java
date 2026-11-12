@@ -178,19 +178,31 @@ public class RefactoringAnalysisService {
 
     // One request schedules the full reachable default-branch history. Jobs are cached by SHA.
     // The preferred commit and its neighbors are queued first; remaining commits follow in batches of ten.
-    public Map<String, Object> startHistory(UUID key, String preferredSha) throws Exception {
-        RepositoryEntity repo = require(key);
-        if (!enabled(repo.getId())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Enable refactoring mode first");
+    // Resolve the selected branch, never silently substitute another branch.
+    private List<String> branchCommits(RepositoryEntity repo, String requestedBranch) throws Exception {
+        String branch = requestedBranch == null || requestedBranch.isBlank()
+                ? repo.getDefaultBranch() : requestedBranch;
+        if (branch == null || branch.isBlank() || branch.contains("..") || branch.startsWith("/")
+                || branch.endsWith("/") || branch.contains("\\")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid branch");
+        }
         List<String> shas = new ArrayList<>();
-        try (Repository repository = git.openRepository(Path.of(repo.getLocalGitDirectory())); Git jgit = new Git(repository)) {
-            String branch = repo.getDefaultBranch();
-            ObjectId head = branch == null ? null : repository.resolve("refs/remotes/origin/" + branch);
-            if (head == null && branch != null) head = repository.resolve("refs/heads/" + branch);
-            if (head == null) head = repository.resolve("HEAD");
-            if (head == null) return coverage(key);
+        try (Repository repository = git.openRepository(Path.of(repo.getLocalGitDirectory()));
+             Git jgit = new Git(repository)) {
+            ObjectId head = repository.resolve("refs/remotes/origin/" + branch);
+            if (head == null) head = repository.resolve("refs/heads/" + branch);
+            if (head == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown branch: " + branch);
             for (RevCommit commit : jgit.log().add(head).call()) shas.add(commit.getName());
         }
         java.util.Collections.reverse(shas);
+        return shas;
+    }
+
+    // Jobs are stored once per repository+SHA; each branch schedules only its reachable commits.
+    public Map<String, Object> startHistory(UUID key, String branch, String preferredSha) throws Exception {
+        RepositoryEntity repo = require(key);
+        if (!enabled(repo.getId())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Enable refactoring mode first");
+        List<String> shas = branchCommits(repo, branch);
         if (preferredSha != null) {
             int position = shas.indexOf(preferredSha);
             if (position >= 0) {
@@ -210,27 +222,33 @@ public class RefactoringAnalysisService {
             }
         }
         dispatch();
-        return coverage(key);
+        return coverage(key, branch);
     }
 
-    // Compact timeline metadata: no N-per-commit browser requests and no large source ranges.
-    public Map<String, Object> coverage(UUID key) {
+    // Report coverage for the selected branch, including commits not yet scheduled.
+    // A job belonging exclusively to another branch never affects this branch's progress.
+    public Map<String, Object> coverage(UUID key, String branch) throws Exception {
         RepositoryEntity repo = require(key);
-        List<Map<String, Object>> rows = jdbc.queryForList("""
+        List<String> reachable = branchCommits(repo, branch);
+        Set<String> reachableSet = new HashSet<>(reachable);
+        List<Map<String, Object>> stored = jdbc.queryForList("""
             SELECT j.commit_sha, j.status, COUNT(r.id) AS refactoring_count,
                    COALESCE(string_agg(DISTINCT r.type, '|'), '') AS refactoring_types
             FROM refactoring_jobs j LEFT JOIN detected_refactorings r ON r.job_id=j.id
             WHERE j.repository_id=? GROUP BY j.id, j.commit_sha, j.status
             ORDER BY j.created_at, j.id
             """, repo.getId());
-        long completed=0, failed=0, pending=0;
-        for (Map<String, Object> row : rows) {
-            String status = (String)row.get("status");
-            if ("COMPLETED".equals(status)) completed++;
-            else if ("FAILED".equals(status)) failed++;
-            else pending++;
+        List<Map<String, Object>> rows = new ArrayList<>();
+        long completed = 0, failed = 0, pending = reachable.size();
+        for (Map<String, Object> row : stored) {
+            if (!reachableSet.contains((String) row.get("commit_sha"))) continue;
+            rows.add(row);
+            String status = (String) row.get("status");
+            if ("COMPLETED".equals(status)) { completed++; pending--; }
+            else if ("FAILED".equals(status)) { failed++; pending--; }
         }
-        return Map.of("total",rows.size(),"completed",completed,"failed",failed,"pending",pending,"commits",rows);
+        return Map.of("total", reachable.size(), "completed", completed,
+                "failed", failed, "pending", pending, "commits", rows);
     }
 
     public void retry(UUID key, String sha) {

@@ -58,6 +58,7 @@ export default function RepositoryPage() {
   const [commits, setCommits] = useState<Commit[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
   const [branch, setBranch] = useState("");
+  const [loadedHistoryBranch, setLoadedHistoryBranch] = useState("");
   const [switchingBranch, setSwitchingBranch] = useState(false);
   const [index, setIndex] = useState(0);
   const [authors, setAuthors] = useState<string[]>([]);
@@ -139,7 +140,7 @@ export default function RepositoryPage() {
   const visibleIndex = filteredIndices.indexOf(index);
   const selected = commits[index] ?? null;
   useEffect(() => {
-    if (!repoKey || !showRefactorings || !historyHeadSha) {
+    if (!repoKey || !showRefactorings || !historyHeadSha || !branch || loadedHistoryBranch !== branch) {
       setRefactoringCoverage(null);
       historyStartKey.current = null;
       return;
@@ -148,13 +149,15 @@ export default function RepositoryPage() {
     let alive = true;
     let timer: number | undefined;
     const key = repoKey;
-    const runKey = `${key}:${historyHeadSha}`;
+    const activeBranch = branch;
+    const runKey = `${key}:${activeBranch}:${historyHeadSha}`;
+    setRefactoringCoverage(null);
 
     // One request at a time. Schedule the next refresh only while jobs are active;
     // completed history is kept in React state without further network traffic.
     const poll = async () => {
       try {
-        const coverage = await getRefactoringCoverage(key);
+        const coverage = await getRefactoringCoverage(key, activeBranch);
         if (!alive) return;
         setRefactoringCoverage(coverage);
         setHistoryError(null);
@@ -164,7 +167,7 @@ export default function RepositoryPage() {
           // Mark before awaiting to prevent duplicate POSTs from concurrent renders.
           historyStartKey.current = runKey;
           try {
-            latest = await startRefactoringHistory(key);
+            latest = await startRefactoringHistory(key, activeBranch, historyHeadSha);
           } catch (err) {
             if (alive) setHistoryError(err instanceof Error ? err.message : "History analysis unavailable");
             return;
@@ -184,7 +187,7 @@ export default function RepositoryPage() {
     void poll();
     return () => { alive = false; if (timer !== undefined) window.clearTimeout(timer); };
     // Commit selection, playback, and filters must not restart repository polling.
-  }, [repoKey, showRefactorings, historyHeadSha, historyRefreshVersion]);
+  }, [repoKey, branch, loadedHistoryBranch, showRefactorings, historyHeadSha, historyRefreshVersion]);
 
   const setVisibleIndex = (next: number) => {
     const target = filteredIndices[next];
@@ -282,6 +285,7 @@ export default function RepositoryPage() {
   const loadHistory = useCallback(async (repositoryId: string, preferSha?: string) => {
     const history = await getCommits(repositoryId, branch || undefined);
     setCommits(history);
+    setLoadedHistoryBranch(branch);
     if (!history.length) {
       setIndex(0);
       return;
@@ -309,6 +313,7 @@ export default function RepositoryPage() {
         const history = await getCommits(repoKey, initialBranch || undefined);
         if (requestVersion.current !== version) return;
         setCommits(history);
+        setLoadedHistoryBranch(initialBranch);
         setIndex(history.length ? history.length - 1 : 0);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load repository."));
@@ -342,6 +347,7 @@ export default function RepositoryPage() {
     try {
       const version = ++requestVersion.current;
       setBranch(nextBranch);
+      setRefactoringCoverage(null);
       setMetrics(null);
       setDetails({});
       setMetricErrors({});
@@ -349,6 +355,7 @@ export default function RepositoryPage() {
       const history = await getCommits(repoKey, nextBranch);
       if (requestVersion.current !== version) return;
       setCommits(history);
+      setLoadedHistoryBranch(nextBranch);
       setIndex(history.length ? history.length - 1 : 0);
       setDetail(null);
       setTree(null);
@@ -544,7 +551,7 @@ export default function RepositoryPage() {
                     <span>◆ Refactoring</span>
                   </label>
                   {refactoringPreferenceError && <button type="button" className="refactoring-retry" title={refactoringPreferenceError} onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button>}
-                  {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={()=>{historyStartKey.current=null; void (async()=>{if(repoKey) {try {setRefactoringCoverage(await startRefactoringHistory(repoKey,selected?.sha));setHistoryError(null);setHistoryRefreshVersion(v=>v+1);} catch(e){setHistoryError(e instanceof Error ? e.message : "Could not retry");}}})();}}>Retry analysis</button>}
+                  {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={()=>{historyStartKey.current=null; void (async()=>{if(repoKey) {try {setRefactoringCoverage(await startRefactoringHistory(repoKey,branch,selected?.sha));setHistoryError(null);setHistoryRefreshVersion(v=>v+1);} catch(e){setHistoryError(e instanceof Error ? e.message : "Could not retry");}}})();}}>Retry analysis</button>}
                 </div>}
                 filters={<TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}

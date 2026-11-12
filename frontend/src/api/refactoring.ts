@@ -11,5 +11,10 @@ export const analyzeRefactoring = (repoKey: string, sha: string) => api.post<Ref
 export const retryRefactoring = (repoKey: string, sha: string) => api.post<RefactoringJob>(`${analysisEndpoint(repoKey, sha)}/retry`);
 
 export type RefactoringCoverage = { total: number; completed: number; failed: number; pending: number; commits: Array<{commit_sha:string;status:string;refactoring_count:number;refactoring_types?:string}> };
-export const getRefactoringCoverage = (repoKey:string) => api.get<RefactoringCoverage>(`/api/repositories/${encodeURIComponent(repoKey)}/refactorings/coverage`);
-export const startRefactoringHistory = (repoKey:string, preferredSha?:string) => api.post<RefactoringCoverage>(`/api/repositories/${encodeURIComponent(repoKey)}/refactorings/history${preferredSha ? `?preferredSha=${encodeURIComponent(preferredSha)}` : ""}`);
+export const getRefactoringCoverage = (repoKey: string, branch: string) =>
+  api.get<RefactoringCoverage>(`/api/repositories/${encodeURIComponent(repoKey)}/refactorings/coverage?branch=${encodeURIComponent(branch)}`);
+export const startRefactoringHistory = (repoKey: string, branch: string, preferredSha?: string) => {
+  const params = new URLSearchParams({ branch });
+  if (preferredSha) params.set("preferredSha", preferredSha);
+  return api.post<RefactoringCoverage>(`/api/repositories/${encodeURIComponent(repoKey)}/refactorings/history?${params.toString()}`);
+};
