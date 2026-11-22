@@ -10,7 +10,7 @@ type Props = {
   branch: string;
   switchingBranch: boolean;
   onBranchChange: (branch: string) => void;
-  metrics: RepositoryMetrics | null;
+  metrics: Pick<RepositoryMetrics, "totalCommits" | "contributorCount" | "repositoryAgeDays" | "codeChurn" | "totalAdditions" | "totalDeletions"> | null;
   syncing: boolean;
   onSync: () => void;
   onExploreMetrics: () => void;

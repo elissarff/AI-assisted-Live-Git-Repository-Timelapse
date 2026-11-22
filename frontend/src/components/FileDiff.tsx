@@ -109,7 +109,7 @@ function FileDiff({ change, content, beforeContent, afterContent, binary, path, 
   const rawLines = splitLines(raw);
   const loc = rawLines.filter(line => line.trim()).length;
   const size = new TextEncoder().encode(raw).length;
-  const displayPath = path ?? change?.path ?? "File content";
+  const displayPath = path ?? change?.newPath ?? change?.oldPath ?? "File content";
   const fileName = displayPath.split("/").pop() ?? displayPath;
   const extension = fileName.includes(".") ? fileName.split(".").pop()?.toUpperCase() : "FILE";
   const download = () => {

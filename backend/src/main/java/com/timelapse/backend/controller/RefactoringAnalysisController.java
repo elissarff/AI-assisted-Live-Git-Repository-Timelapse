@@ -63,8 +63,9 @@ public class RefactoringAnalysisController {
     }
 
     @PostMapping("/{sha}/retry")
-    public Map<String, Object> retry(@PathVariable UUID repoKey, @PathVariable String sha) {
-        service.retry(repoKey, sha);
+    public Map<String, Object> retry(@PathVariable UUID repoKey, @PathVariable String sha,
+            @RequestParam(defaultValue = "false") boolean longer) {
+        service.retry(repoKey, sha, longer);
         return service.job(repoKey, sha);
     }
 }

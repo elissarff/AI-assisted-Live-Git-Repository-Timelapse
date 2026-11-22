@@ -7,7 +7,9 @@ import RepositoryTree from "../components/RepositoryTree";
 import FileDiff from "../components/FileDiff";
 import TimeLine from "../components/TimeLine";
 import TimelineFilters from "../components/TimelineFilters";
+import ErrorFlag from "../components/ErrorFlag";
 import CommitSummary from "../components/CommitSummary";
+import AiCommitExplanation from "../components/ai/AiCommitExplanation";
 import RepositoryHeader from "../components/RepositoryHeader";
 import AiSettingsPanel from "../components/ai/AiSettingsPanel";
 import MetricsExplorer from "../components/MetricsExplorer";
@@ -116,7 +118,6 @@ export default function RepositoryPage() {
   const fileCache = useRef(new Map<string,FileContent|null>());
   const [refactoringCoverage, setRefactoringCoverage] = useState<RefactoringCoverage | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const historyStartKey = useRef<string | null>(null);
   const [historyRefreshVersion, setHistoryRefreshVersion] = useState(0);
   const historyHeadSha = commits[commits.length - 1]?.sha;
   const coverageBySha = useMemo(() => new Map((refactoringCoverage?.commits ?? []).map(c => [c.commit_sha,c])), [refactoringCoverage]);
@@ -142,7 +143,7 @@ export default function RepositoryPage() {
   useEffect(() => {
     if (!repoKey || !showRefactorings || !historyHeadSha || !branch || loadedHistoryBranch !== branch) {
       setRefactoringCoverage(null);
-      historyStartKey.current = null;
+      setHistoryError(null);
       return;
     }
 
@@ -150,33 +151,24 @@ export default function RepositoryPage() {
     let timer: number | undefined;
     const key = repoKey;
     const activeBranch = branch;
-    const runKey = `${key}:${activeBranch}:${historyHeadSha}`;
-    setRefactoringCoverage(null);
-
-    // One request at a time. Schedule the next refresh only while jobs are active;
-    // completed history is kept in React state without further network traffic.
     const poll = async () => {
       try {
-        const coverage = await getRefactoringCoverage(key, activeBranch);
+        let coverage = await getRefactoringCoverage(key, activeBranch);
         if (!alive) return;
         setRefactoringCoverage(coverage);
-        setHistoryError(null);
 
-        let latest = coverage;
-        if (historyStartKey.current !== runKey) {
-          // Mark before awaiting to prevent duplicate POSTs from concurrent renders.
-          historyStartKey.current = runKey;
-          try {
-            latest = await startRefactoringHistory(key, activeBranch, historyHeadSha);
-          } catch (err) {
-            if (alive) setHistoryError(err instanceof Error ? err.message : "History analysis unavailable");
+        // Coverage includes reachable commits with no job yet. Only history queues them.
+        if (coverage.commits.length < coverage.total) {
+          coverage = await startRefactoringHistory(key, activeBranch, historyHeadSha);
+          if (!alive) return;
+          setRefactoringCoverage(coverage);
+          if (coverage.commits.length < coverage.total) {
+            setHistoryError("Some commits could not be queued for analysis.");
             return;
           }
-          if (!alive) return;
-          setRefactoringCoverage(latest);
         }
 
-        if (latest.pending > 0) {
+        if (coverage.commits.some(commit => commit.status === "PENDING" || commit.status === "RUNNING")) {
           timer = window.setTimeout(() => void poll(), 3000);
         }
       } catch (err) {
@@ -184,6 +176,8 @@ export default function RepositoryPage() {
       }
     };
 
+    setRefactoringCoverage(null);
+    setHistoryError(null);
     void poll();
     return () => { alive = false; if (timer !== undefined) window.clearTimeout(timer); };
     // Commit selection, playback, and filters must not restart repository polling.
@@ -216,8 +210,9 @@ export default function RepositoryPage() {
     if (!metadata || metadata.status === "PENDING" || metadata.status === "RUNNING") {
       setRefactoringJob(null); setRefactoringLoading(false); return;
     }
-    if (refactoringCache.current.has(selectedRefactoringKey)) {
-      setRefactoringJob(refactoringCache.current.get(selectedRefactoringKey) ?? null);
+    const cached = refactoringCache.current.get(selectedRefactoringKey);
+    if (cached?.status === metadata.status) {
+      setRefactoringJob(cached);
       setRefactoringError(null);
       setRefactoringLoading(false);
       return;
@@ -271,7 +266,10 @@ export default function RepositoryPage() {
     try {
       const job = await (retry ? retryRefactoring(repoKey, sha) : analyzeRefactoring(repoKey, sha));
       refactoringCache.current.set(key, job);
-      if (version === refactoringRequest.current) setRefactoringJob(job);
+      if (version === refactoringRequest.current) {
+        setRefactoringJob(job);
+        setHistoryRefreshVersion(v => v + 1);
+      }
     } catch (err) {
       if (version === refactoringRequest.current) setRefactoringError(err instanceof Error ? err.message : "Analysis request failed");
     } finally {
@@ -543,6 +541,7 @@ export default function RepositoryPage() {
           <>
             <section className="card timelapse-bottom" style={{padding: "0"}}>
               <TimeLine
+                failedRefactoringCommits={showRefactorings ? new Set((refactoringCoverage?.commits ?? []).filter(c => c.status === "FAILED").map(c => c.commit_sha)) : undefined}
                 refactoringMarkers={showRefactorings ? new Map((refactoringCoverage?.commits ?? []).filter(c=>c.status === "COMPLETED" && Number(c.refactoring_count)>0 && (selectedRefactoringTypes.length===0 || (c.refactoring_types ?? "").split("|").some(t=>selectedRefactoringTypes.includes(t)))).map(c=>[c.commit_sha,Number(c.refactoring_count)])) : undefined}
                 refactoringProgress={showRefactorings && refactoringCoverage ? {total:refactoringCoverage.total,completed:refactoringCoverage.completed,failed:refactoringCoverage.failed,pending:refactoringCoverage.pending} : undefined}
                 refactoringControl={<div className={`refactoring-compact ${showRefactorings ? "refactoring-mode-active" : ""}`}>
@@ -551,7 +550,7 @@ export default function RepositoryPage() {
                     <span>◆ Refactoring</span>
                   </label>
                   {refactoringPreferenceError && <button type="button" className="refactoring-retry" title={refactoringPreferenceError} onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button>}
-                  {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={()=>{historyStartKey.current=null; void (async()=>{if(repoKey) {try {setRefactoringCoverage(await startRefactoringHistory(repoKey,branch,selected?.sha));setHistoryError(null);setHistoryRefreshVersion(v=>v+1);} catch(e){setHistoryError(e instanceof Error ? e.message : "Could not retry");}}})();}}>Retry analysis</button>}
+                  {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={() => setHistoryRefreshVersion(v => v + 1)}>Retry analysis</button>}
                 </div>}
                 filters={<TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
@@ -574,7 +573,10 @@ export default function RepositoryPage() {
                 onSpeedChange={setSpeed}
               />
 
-              <CommitSummary commit={selected} detail={detail?.sha === selected?.sha ? detail : null} />
+              <CommitSummary commit={selected} detail={detail?.sha === selected?.sha ? detail : null}
+                flag={showRefactorings && selected && (coverageBySha.get(selected.sha)?.status === "FAILED" || refactoringError) ?
+                  <ErrorFlag message={refactoringError || "Refactoring analysis incomplete. Retry with more time."} busy={refactoringLoading} onRetry={() => void runRefactoring(true)} /> : undefined} />
+              {repoKey && selected && <AiCommitExplanation repoKey={repoKey} sha={selected.sha} />}
 
             </section>
 

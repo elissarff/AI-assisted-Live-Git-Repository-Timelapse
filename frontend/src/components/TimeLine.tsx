@@ -6,6 +6,7 @@ type Props = {
   commits: Commit[];
   filters?: ReactNode;
   refactoringControl?: ReactNode;
+  failedRefactoringCommits?: Set<string>;
   refactoringMarkers?: Map<string,number>;
   refactoringProgress?: {total:number;completed:number;failed:number;pending:number};
   currentIndex: number; playing: boolean; speed: number;
@@ -14,7 +15,7 @@ type Props = {
   onSpeedChange: (speed: number) => void;
 };
 const SPEEDS = [0.5, 1, 2, 4];
-export default function TimeLine({ filters, refactoringControl, refactoringMarkers, refactoringProgress, commits, currentIndex, playing, speed, onIndexChange, onPlayingChange, onSpeedChange }: Props) {
+export default function TimeLine({ filters, refactoringControl, failedRefactoringCommits, refactoringMarkers, refactoringProgress, commits, currentIndex, playing, speed, onIndexChange, onPlayingChange, onSpeedChange }: Props) {
   const lastIndex = Math.max(0, commits.length - 1);
 
   const seek = (next: number) => { onPlayingChange(false); onIndexChange(Math.max(0, Math.min(lastIndex, next))); };
@@ -27,10 +28,10 @@ export default function TimeLine({ filters, refactoringControl, refactoringMarke
     {commits.length === 0 ? <p className="muted" role="status">No commits match these filters. Adjust or clear them to continue.</p> : <><input className="timeline-range" aria-label="Commit timeline" type="range" min={0} max={lastIndex} value={currentIndex}
       style={{ "--progress": `${lastIndex ? (currentIndex / lastIndex) * 100 : 0}%` } as React.CSSProperties}
       onChange={e => seek(Number(e.target.value))} />
-      {refactoringProgress && refactoringProgress.pending > 0 && <div className="refactoring-analysis-track" role="progressbar" aria-label="Refactoring history analysis" aria-valuemin={0} aria-valuemax={refactoringProgress.total} aria-valuenow={refactoringProgress.completed + refactoringProgress.failed} title={`Analyzing refactoring history: ${refactoringProgress.completed + refactoringProgress.failed} of ${refactoringProgress.total} commits processed`}>
-        <div className="refactoring-analysis-fill" style={{width:`${refactoringProgress.total ? 100*(refactoringProgress.completed+refactoringProgress.failed)/refactoringProgress.total : 0}%`}} />
+      {refactoringProgress && refactoringProgress.pending > 0 && <div className="refactoring-analysis-track" role="progressbar" aria-label="Refactoring history analysis" aria-valuemin={0} aria-valuemax={refactoringProgress.total} aria-valuenow={refactoringProgress.completed} title={`${refactoringProgress.completed} analyzed, ${refactoringProgress.failed} failed, ${refactoringProgress.pending} pending`}>
+        <div className="refactoring-analysis-fill" style={{width:`${refactoringProgress.total ? 100*refactoringProgress.completed/refactoringProgress.total : 0}%`}} />
       </div>}
-      {refactoringMarkers && <div className="refactoring-timeline-markers" aria-label="Commits with detected refactorings">{commits.map((commit,i)=>refactoringMarkers.has(commit.sha) ? <button key={commit.sha} type="button" title={`${refactoringMarkers.get(commit.sha)} refactoring(s) at ${commit.sha.slice(0,8)}. Jump to commit`} style={{left:`${lastIndex ? i / lastIndex * 100 : 0}%`}} onClick={()=>seek(i)} /> : null)}</div>}
+      {refactoringMarkers && <div className="refactoring-timeline-markers" aria-label="Commits with detected refactorings">{commits.map((commit,i)=>(refactoringMarkers.has(commit.sha) || failedRefactoringCommits?.has(commit.sha)) ? <button className={failedRefactoringCommits?.has(commit.sha) ? "refactoring-marker-failed" : undefined} key={commit.sha} type="button" aria-label={failedRefactoringCommits?.has(commit.sha) ? "Refactoring analysis incomplete. Jump to commit" : undefined} title={failedRefactoringCommits?.has(commit.sha) ? "Refactoring analysis incomplete. Jump to commit" : `${refactoringMarkers.get(commit.sha)} refactoring(s) at ${commit.sha.slice(0,8)}. Jump to commit`} style={{left:`${lastIndex ? i / lastIndex * 100 : 0}%`}} onClick={()=>seek(i)} /> : null)}</div>}
       <div className="timelapse-controls">
         <div className="player-transport">
           <button type="button" className="player-button secondary" onClick={() => seek(0)} disabled={currentIndex === 0} aria-label="First commit">|‹</button>

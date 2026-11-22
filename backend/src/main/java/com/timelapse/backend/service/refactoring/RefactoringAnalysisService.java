@@ -13,17 +13,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.refactoringminer.api.Refactoring;
-import org.refactoringminer.api.RefactoringHandler;
-import org.refactoringminer.rm1.GitHistoryRefactoringMinerImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -52,9 +47,13 @@ public class RefactoringAnalysisService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
     private final TransactionTemplate transactions;
-    private final AtomicBoolean draining = new AtomicBoolean(false);
-    private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "refactoring-miner-worker");
+    private final RefactoringDetector detector;
+    private final java.util.List<AtomicBoolean> historySlots = new ArrayList<>();
+    private final ExecutorService worker;
+
+    private final AtomicBoolean manualDraining = new AtomicBoolean(false);
+    private final ExecutorService manualWorker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "refactoring-manual-worker");
         t.setDaemon(true);
         return t;
     });
@@ -69,18 +68,27 @@ public class RefactoringAnalysisService {
     public RefactoringAnalysisService(RepositoryJpaRepository repositories,
             RefactoringRepositorySettingsJpaRepository settings,
             GitRepositoryService git, JdbcTemplate jdbc, ObjectMapper mapper,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            RefactoringDetector detector,
+            @org.springframework.beans.factory.annotation.Value("${app.refactoring.history-workers:2}") int historyWorkers) {
+        if (historyWorkers < 1 || historyWorkers > 8) throw new IllegalArgumentException("History workers must be between 1 and 8");
+        worker = Executors.newFixedThreadPool(historyWorkers, r -> {
+            Thread t = new Thread(r, "refactoring-history-worker"); t.setDaemon(true); return t;
+        });
+        for (int i = 0; i < historyWorkers; i++) historySlots.add(new AtomicBoolean());
         this.repositories = repositories;
         this.settings = settings;
         this.git = git;
         this.jdbc = jdbc;
         this.mapper = mapper;
         this.transactions = new TransactionTemplate(transactionManager);
+        this.detector = detector;
     }
 
     @PreDestroy
     void stopWorkers() {
         worker.shutdownNow();
+        manualWorker.shutdownNow();
         claimRenewals.shutdownNow();
     }
 
@@ -279,8 +287,12 @@ public class RefactoringAnalysisService {
     }
 
     public void retry(UUID key, String sha) {
+        retry(key, sha, false);
+    }
+
+    public void retry(UUID key, String sha, boolean longer) {
         RepositoryEntity repo = require(key);
-        int count = jdbc.update("UPDATE refactoring_jobs SET status='PENDING', attempts=0,last_error=NULL,requested_explicitly=TRUE,updated_at=NOW() WHERE repository_id=? AND commit_sha=? AND status='FAILED'", repo.getId(), sha);
+        int count = jdbc.update("UPDATE refactoring_jobs SET status='PENDING', attempts=0,last_error=NULL,requested_explicitly=TRUE,timeout_seconds=CASE WHEN ? THEN 300 ELSE NULL END,updated_at=NOW() WHERE repository_id=? AND commit_sha=? AND status='FAILED'", longer, repo.getId(), sha);
         if (count == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only failed jobs can be retried");
         }
@@ -289,14 +301,19 @@ public class RefactoringAnalysisService {
 
     @Scheduled(fixedDelay = 15000)
     public void dispatch() {
-        if (!draining.compareAndSet(false, true)) return;
-        worker.execute(() -> {
+        for (var slot : historySlots) drain(worker, slot, false);
+        drain(manualWorker, manualDraining, true);
+    }
+
+    private void drain(ExecutorService executor, AtomicBoolean active, boolean manual) {
+        if (!active.compareAndSet(false, true)) return;
+        executor.execute(() -> {
             try {
-                while (!worker.isShutdown() && processNext()) { /* drain pending work without 15-second gaps */ }
+                while (!executor.isShutdown() && processNext(manual)) { /* drain this queue */ }
             } catch (RuntimeException e) {
-                log.error("Unable to drain refactoring jobs", e);
+                log.error("Unable to drain refactoring jobs (manual={})", manual, e);
             } finally {
-                draining.set(false);
+                active.set(false);
             }
         });
     }
@@ -305,7 +322,7 @@ public class RefactoringAnalysisService {
         return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
     }
 
-    private boolean processNext() {
+    private boolean processNext(boolean manual) {
 
         // Atomic claim permits multiple application instances without duplicate execution.
         /* can be replaced with database transactions 
@@ -316,22 +333,43 @@ public class RefactoringAnalysisService {
         // Each attempt owns a renewable lease. A stopped process cannot renew it.
         UUID claimToken = UUID.randomUUID();
         List<Map<String, Object>> claimed = jdbc.queryForList("""
-            WITH next AS (
+            WITH parameters AS (SELECT ?::boolean AS manual, ?::uuid AS token), repository_claim AS (
+                UPDATE repositories r SET refactoring_claim_token=(SELECT token FROM parameters),
+                    refactoring_lease_until=NOW()+INTERVAL '1 minute'
+                WHERE r.id=(
+                    SELECT candidate.id FROM repositories candidate
+                    JOIN refactoring_repository_settings settings ON settings.repository_id=candidate.id AND settings.enabled
+                    WHERE NOT (SELECT manual FROM parameters)
+                        AND (candidate.refactoring_lease_until IS NULL OR candidate.refactoring_lease_until<=NOW())
+                        AND EXISTS (SELECT 1 FROM refactoring_jobs work WHERE work.repository_id=candidate.id
+                            AND NOT work.requested_explicitly AND (work.status='PENDING' OR
+                                (work.status='RUNNING' AND COALESCE(work.lease_expires_at,work.updated_at+INTERVAL '1 minute')<=NOW())))
+                    ORDER BY (SELECT MAX(previous.updated_at) FROM refactoring_jobs previous
+                        WHERE previous.repository_id=candidate.id AND previous.attempts>0) NULLS FIRST, candidate.id
+                    FOR UPDATE OF candidate SKIP LOCKED LIMIT 1
+                ) AND (r.refactoring_lease_until IS NULL OR r.refactoring_lease_until<=NOW())
+                RETURNING r.id
+            ), repository_activity AS (
+                SELECT repository_id, MAX(updated_at) AS last_served
+                FROM refactoring_jobs WHERE attempts > 0 GROUP BY repository_id
+            ), next AS (
                 SELECT j.id FROM refactoring_jobs j
+                LEFT JOIN repository_activity activity ON activity.repository_id = j.repository_id
                 LEFT JOIN refactoring_repository_settings s ON s.repository_id = j.repository_id
                 WHERE (j.status = 'PENDING'
-                    OR (j.status = 'FAILED' AND j.attempts < 3 AND j.updated_at < NOW() - INTERVAL '2 minutes')
                     OR (j.status = 'RUNNING' AND COALESCE(j.lease_expires_at, j.updated_at + INTERVAL '1 minute') <= NOW()))
+                    AND j.requested_explicitly = (SELECT manual FROM parameters)
+                    AND ((SELECT manual FROM parameters) OR j.repository_id IN (SELECT id FROM repository_claim))
                     AND (j.requested_explicitly OR COALESCE(s.enabled, FALSE))
-                ORDER BY j.created_at
+                ORDER BY COALESCE(activity.last_served, '-infinity'::timestamptz), j.created_at, j.id
                 FOR UPDATE OF j SKIP LOCKED LIMIT 1
             )
             UPDATE refactoring_jobs j
             SET status = 'RUNNING', attempts = attempts + 1, updated_at = NOW(),
-                claim_token = ?, lease_expires_at = NOW() + INTERVAL '1 minute'
+                claim_token = (SELECT token FROM parameters), lease_expires_at = NOW() + INTERVAL '1 minute'
             FROM next WHERE j.id = next.id
-            RETURNING j.id, j.repository_id, j.commit_sha
-            """, claimToken);
+            RETURNING j.id, j.repository_id, j.commit_sha, j.timeout_seconds
+            """, manual, claimToken);
         if (claimed.isEmpty()) {
             return false;
         }
@@ -345,58 +383,17 @@ public class RefactoringAnalysisService {
         log.info("Refactoring analysis started: jobId={} repositoryId={} sha={}", jobId, repositoryId, sha);
         try {
             RepositoryEntity repo = repositories.findById(repositoryId).orElseThrow();
-            String parent = null;
-            List<Refactoring> detected = new ArrayList<>();
-            // RefactoringMiner uses JGit directly; Git stays authoritative.
-            try (Repository repository = git.openRepository(Path.of(repo.getLocalGitDirectory()));
-                 RevWalk walk = new RevWalk(repository)) {
-                ObjectId commitId = repository.resolve(sha);
-                if (commitId == null) throw new IllegalStateException("Commit not found in local clone: " + sha);
-                RevCommit commit = walk.parseCommit(commitId);
-                if (commit.getParentCount() == 0) {
-                    // A root commit has no parent for RefactoringMiner to compare against.
-                    log.info("Refactoring analysis skipped root commit: jobId={} sha={}", jobId, sha);
-                } else {
-                    parent = commit.getParent(0).getName();
-                    var miner = new GitHistoryRefactoringMinerImpl();
-                    AtomicInteger callbackCount = new AtomicInteger();
-                    AtomicReference<Exception> minerError = new AtomicReference<>();
-                    miner.detectAtCommit(repository, sha, new RefactoringHandler() {
-                        @Override
-                        public void handle(String commitId, List<Refactoring> refactorings) {
-                            callbackCount.incrementAndGet();
-                            if (!sha.equals(commitId)) {
-                                minerError.compareAndSet(null, new IllegalStateException(
-                                        "RefactoringMiner returned unexpected commit " + commitId + " for " + sha));
-                                return;
-                            }
-                            if (refactorings == null) {
-                                minerError.compareAndSet(null, new IllegalStateException(
-                                        "RefactoringMiner returned null refactoring list for " + sha));
-                                return;
-                            }
-                            detected.addAll(refactorings);
-                        }
-
-                        @Override
-                        public void handleException(String commitId, Exception e) {
-                            // Do not rely on exceptions thrown inside the handler propagating
-                            // through RefactoringMiner: retain the failure and check it afterward.
-                            minerError.compareAndSet(null, e);
-                            log.error("RefactoringMiner callback failed: jobId={} sha={} callbackCommit={}",
-                                    jobId, sha, commitId, e);
-                        }
-                    });
-                    if (minerError.get() != null) {
-                        throw new IllegalStateException("RefactoringMiner failed for " + sha, minerError.get());
-                    }
-                    if (callbackCount.get() != 1) {
-                        throw new IllegalStateException("RefactoringMiner returned " + callbackCount.get()
-                                + " success callbacks for " + sha + " (expected exactly one)");
-                    }
-                }
-            }
-            saveResults(jobId, claimToken, parent, detected);
+            Path gitDirectory = Path.of(repo.getLocalGitDirectory());
+            RefactoringResult result = item.get("timeout_seconds") instanceof Number limit
+                    ? detector.detect(gitDirectory, sha, limit.intValue()) : detector.detect(gitDirectory, sha);
+            saveResults(jobId, claimToken, result);
+        } catch (InterruptedException e) {
+            // Leave the lease recoverable after shutdown instead of reporting a detector failure.
+            Thread.currentThread().interrupt();
+            log.info("Refactoring analysis interrupted: jobId={} sha={}", jobId, sha);
+        } catch (java.util.concurrent.TimeoutException e) {
+            log.warn("Refactoring analysis timed out: jobId={} sha={} elapsedMs={}", jobId, sha, elapsedMs(startedNanos));
+            finishClaim(jobId, claimToken, "FAILED", "TIMEOUT: " + e.getMessage());
         } catch (Exception | LinkageError e) {
             log.error("Refactoring analysis failed: jobId={} repositoryId={} sha={} elapsedMs={}",
                     jobId, repositoryId, sha, elapsedMs(startedNanos), e);
@@ -415,6 +412,7 @@ public class RefactoringAnalysisService {
 
     private void renewClaim(long jobId, UUID claimToken) {
         try {
+            jdbc.update("UPDATE repositories SET refactoring_lease_until=NOW()+INTERVAL '1 minute' WHERE refactoring_claim_token=? AND refactoring_lease_until>NOW()", claimToken);
             jdbc.update("""
                 UPDATE refactoring_jobs SET lease_expires_at = NOW() + INTERVAL '1 minute'
                 WHERE id = ? AND status = 'RUNNING' AND claim_token = ? AND lease_expires_at > NOW()
@@ -424,7 +422,7 @@ public class RefactoringAnalysisService {
         }
     }
 
-    private void saveResults(long jobId, UUID claimToken, String parent, List<Refactoring> detected) {
+    private void saveResults(long jobId, UUID claimToken, RefactoringResult result) {
         transactions.executeWithoutResult(transaction -> {
             // Lock and finish the current claim in the same transaction as its results.
             if (!finishClaim(jobId, claimToken, "COMPLETED", null)) {
@@ -432,22 +430,23 @@ public class RefactoringAnalysisService {
                 return;
             }
             jdbc.update("DELETE FROM detected_refactorings WHERE job_id = ?", jobId);
-            for (Refactoring refactoring : detected) {
+            for (var refactoring : result.detections()) {
                 jdbc.update("""
                     INSERT INTO detected_refactorings(job_id, parent_sha, type, description, before_locations, after_locations)
                     VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb)
-                    """, jobId, parent, refactoring.getRefactoringType().toString(), refactoring.toString(),
-                    mapper.valueToTree(refactoring.leftSide()).toString(),
-                    mapper.valueToTree(refactoring.rightSide()).toString());
+                    """, jobId, result.parentSha(), refactoring.type(), refactoring.description(),
+                    refactoring.beforeLocations().toString(), refactoring.afterLocations().toString());
             }
         });
     }
 
     private boolean finishClaim(long jobId, UUID claimToken, String status, String error) {
-        return jdbc.update("""
+        int finished = jdbc.update("""
             UPDATE refactoring_jobs
             SET status = ?, last_error = ?, updated_at = NOW(), claim_token = NULL, lease_expires_at = NULL
             WHERE id = ? AND status = 'RUNNING' AND claim_token = ? AND lease_expires_at > NOW()
-            """, status, error, jobId, claimToken) == 1;
+            """, status, error, jobId, claimToken);
+        if (finished == 1) jdbc.update("UPDATE repositories SET refactoring_claim_token=NULL,refactoring_lease_until=NULL WHERE refactoring_claim_token=?", claimToken);
+        return finished == 1;
     }
 }

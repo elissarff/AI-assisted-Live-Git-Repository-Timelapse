@@ -8,7 +8,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class BackendApplication {
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws Exception {
+		if (args.length > 0 && "--refactoring-worker".equals(args[0])) {
+			com.timelapse.backend.service.refactoring.RefactoringWorker.run(args);
+			return;
+		}
 		SpringApplication.run(BackendApplication.class, args);
 	}
 
