@@ -29,6 +29,16 @@
 #   MVNW_VERBOSE - true: enable verbose log; debug: trace the mvnw script; others: silence the output
 # ----------------------------------------------------------------------------
 
+# GitLapse: load backend-local shell-format settings for direct ./mvnw launches.
+# Resolve relative to this wrapper rather than the terminal's working directory.
+gitlapse_backend_dir=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+if [ -f "$gitlapse_backend_dir/.env" ]; then
+  set -a
+  . "$gitlapse_backend_dir/.env"
+  set +a
+fi
+unset gitlapse_backend_dir
+
 set -euf
 [ "${MVNW_VERBOSE-}" != debug ] || set -x
 
