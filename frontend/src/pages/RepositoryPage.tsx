@@ -9,6 +9,8 @@ import TimeLine from "../components/TimeLine";
 import TimelineFilters from "../components/TimelineFilters";
 import ErrorFlag from "../components/ErrorFlag";
 import CommitSummary from "../components/CommitSummary";
+import AiFileMenu from "../components/ai/AiFileMenu";
+import AiRange from "../components/ai/AiRange";
 import AiExplanation from "../components/ai/AiExplanation";
 import AiCategories from "../components/ai/AiCategories";
 import type { Classification } from "../api/explicitAi";
@@ -559,7 +561,7 @@ export default function RepositoryPage() {
                   {refactoringPreferenceError && <button type="button" className="refactoring-retry" title={refactoringPreferenceError} onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button>}
                   {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={() => setHistoryRefreshVersion(v => v + 1)}>Retry analysis</button>}
                 </div>}
-                filters={<><AiCategories repoKey={repoKey!} branch={branch} onUpdate={setAiCategories} category={aiCategory} tag={aiTag} onCategory={setAiCategory} onTag={setAiTag} /><TimelineFilters
+                filters={<>{repoKey && historyHeadSha && <AiRange repoKey={repoKey} head={historyHeadSha} commits={commits} from={fromDate} to={toDate} />}<AiCategories repoKey={repoKey!} branch={branch} onUpdate={setAiCategories} category={aiCategory} tag={aiTag} onCategory={setAiCategory} onTag={setAiTag} /><TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
               authors={authors} onAuthorsChange={setAuthors}
               fromDate={fromDate} onFromDateChange={setFromDate}
@@ -610,7 +612,7 @@ export default function RepositoryPage() {
               {selectedPath && <div className="card workspace-diff">
                 <div className="viewport-heading">
                   <div><h2>{selectedPath}</h2><p className="muted">File viewer</p></div>
-                  {repoKey && selected && <AiExplanation repoKey={repoKey} sha={selected.sha} path={selectedPath} type="FILE_SNAPSHOT" label="Explain file" />}
+                  {repoKey && selected && <AiFileMenu repoKey={repoKey} sha={selected.sha} path={selectedPath} />}
                   {selectedPath && <button type="button" className="secondary-button clear-file" onClick={backToTree}>Back to tree</button>}
                 </div>
                 {displayedFileFrame?.path === selectedPath ? (

@@ -14,15 +14,31 @@ import com.timelapse.backend.dto.FileContentDto;
 public class GitFileService {
 
     FileContentDto getFileContent(Repository repository, RevCommit commit, String filePath) throws Exception {
+        return getFileContent(repository, commit, filePath, null);
+    }
+
+    /** A null limit reads the full file; a positive limit bounds the blob read itself. */
+    FileContentDto getFileContent(Repository repository, RevCommit commit, String filePath, Integer maxBytes) throws Exception {
+        if (maxBytes != null && maxBytes <= 0) {
+            throw new IllegalArgumentException("File read limit must be positive");
+        }
         try (TreeWalk treeWalk = TreeWalk.forPath(repository, filePath, commit.getTree())) {
             if (treeWalk == null) {
                 throw new IllegalArgumentException("File not found at commit " + commit.getName() + ": " + filePath);
             }
             ObjectId blobId = treeWalk.getObjectId(0);
             var loader = repository.open(blobId);
-            byte[] bytes = loader.getBytes();
+            byte[] bytes;
+            if (maxBytes == null) {
+                bytes = loader.getBytes();
+            } else {
+                try (var input = loader.openStream()) {
+                    bytes = input.readNBytes(maxBytes);
+                }
+            }
             boolean binary = isBinary(bytes);
-            String content = binary ? null : new String(bytes, StandardCharsets.UTF_8);
+            String content = binary ? null : new String(bytes, StandardCharsets.UTF_8)
+                    + (loader.getSize() > bytes.length ? "\n[File truncated]" : "");
             return new FileContentDto(filePath, commit.getName(), loader.getSize(), binary, content);
         }
     }

@@ -12,3 +12,11 @@
 .commit-bottom-details > .ai-explanation { margin-left: auto; }
 
 .ai-explanation-popover::backdrop { background: #0f172a55; }
+
+.ai-file-menu { position: relative; }
+.ai-file-menu summary { list-style: none; }
+.ai-file-menu summary::-webkit-details-marker { display:none; }
+.ai-file-menu > div { display:flex; gap:4px; flex-wrap:wrap; padding-top:4px; }
+.ai-range-inputs { display:grid; gap:10px; }
+.ai-range-inputs label { display:grid; gap:4px; font-size:.8rem; }
+.ai-range-inputs input, .ai-range-inputs select { max-width:100%; width:100%; box-sizing:border-box; padding:6px; }

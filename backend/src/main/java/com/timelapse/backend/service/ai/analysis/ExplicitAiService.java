@@ -28,10 +28,13 @@ public class ExplicitAiService {
     private final ObjectMapper mapper;
     private final TransactionTemplate transactions;
     private final int dailyLimit;
+    private final int fileMaxBytes;
+    private final AiFileHistory fileHistory;
 
     public ExplicitAiService(JdbcTemplate jdbc, RepositoryJpaRepository repositories, GitMiningService git,
             LlmProvider provider, ObjectMapper mapper, PlatformTransactionManager manager,
-            @Value("${app.ai.max-daily-requests:20}") int dailyLimit) {
+            @Value("${app.ai.max-daily-requests:20}") int dailyLimit, AiFileHistory fileHistory,
+            @Value("${app.ai.context.file-max-bytes:48000}") int fileMaxBytes) {
         this.jdbc = jdbc;
         this.repositories = repositories;
         this.git = git;
@@ -39,6 +42,9 @@ public class ExplicitAiService {
         this.mapper = mapper;
         this.transactions = new TransactionTemplate(manager);
         this.dailyLimit = dailyLimit;
+        this.fileHistory = fileHistory;
+        if (fileMaxBytes <= 0) throw new IllegalArgumentException("AI file read limit must be positive");
+        this.fileMaxBytes = fileMaxBytes;
     }
 
     private RepositoryEntity repo(UUID key) {
@@ -101,7 +107,17 @@ public class ExplicitAiService {
                 return work.run(r);
             } catch (Exception ex) {
                 // Return an error value so an outbound attempt is not rolled back and forgotten.
-                return Map.of("status", "FAILED", "error", bounded(ex.getMessage() == null ? "AI unavailable" : ex.getMessage(), 600));
+                String message = ex.getMessage() == null ? "AI unavailable" : ex.getMessage();
+                if (message.contains("503")) {
+                    message = "AI is busy. Try again shortly."; 
+                }else if (message.contains("429")) {
+                    message = "AI quota reached. Try again later."; 
+                }else if (ex instanceof java.net.http.HttpTimeoutException) {
+                    message = "AI took too long. Try again."; 
+                }else if (ex instanceof java.time.format.DateTimeParseException) {
+                    message = "Choose a valid date range";
+                }
+                return Map.of("status", "FAILED", "error", bounded(message, 600));
             }
         });
     }
@@ -198,15 +214,43 @@ public class ExplicitAiService {
     }
 
     public Map<String, Object> explain(UUID key, String type, String sha, String path) {
-        if (!Set.of("COMMIT", "FILE_SNAPSHOT", "REPOSITORY").contains(type)) {
+        return explain(key, type, sha, path, null, null);
+    }
+
+    public Map<String, Object> explain(UUID key, String type, String sha, String path, String from, String to) {
+        return explain(key, type, sha, path, from, to, null, null);
+    }
+
+    public Map<String, Object> explain(UUID key, String type, String sha, String path, String from, String to, String fromSha, String toSha) {
+        if (!Set.of("COMMIT", "FILE_SNAPSHOT", "REPOSITORY", "PERIOD", "FILE_CHANGE", "FILE_EVOLUTION").contains(type)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported explanation");
         }
         return locked(key, r -> {
             sha(r, sha);
-            if (type.equals("FILE_SNAPSHOT") && (path == null || path.isBlank() || path.startsWith("/") || Arrays.asList(path.split("/")).contains(".."))) {
+            if (type.startsWith("FILE_") && (path == null || path.isBlank() || path.startsWith("/") || Arrays.asList(path.split("/")).contains(".."))) {
                 throw new IllegalArgumentException("Invalid file path");
             }
-            String target = sha + (type.equals("FILE_SNAPSHOT") ? ":" + path : "");
+            java.time.LocalDate start = from == null || from.isBlank() ? null : java.time.LocalDate.parse(from);
+            java.time.LocalDate end = to == null || to.isBlank() ? null : java.time.LocalDate.parse(to);
+            boolean range = fromSha != null || toSha != null;
+            if (range) {
+                if (!type.equals("PERIOD") || start != null || end != null || fromSha == null || toSha == null) {
+                    throw new IllegalArgumentException("Choose dates or two commits");
+                }
+                sha(r, fromSha);
+                sha(r, toSha);
+                var directory = Path.of(r.getLocalGitDirectory());
+                if (!git.isAncestor(directory, fromSha, toSha) || !git.isAncestor(directory, toSha, sha)) {
+                    throw new IllegalArgumentException("Range must follow ancestry on this branch");
+                }
+                if (fromSha.equals(toSha)) {
+                    throw new IllegalArgumentException("Choose two different commits");
+                }
+            }
+            if (type.equals("PERIOD") && !range && (start == null && end == null || start != null && end != null && end.isBefore(start))) {
+                throw new IllegalArgumentException("Choose a valid date range");
+            }
+            String target = sha + (type.startsWith("FILE_") ? ":" + path : type.equals("PERIOD") ? range ? ":range:" + fromSha + ":" + toSha : ":dates:" + start + ":" + end : "");
             var hit = cached(r.getId(), type, target);
             if (!hit.isEmpty()) {
                 return Map.of("status", "COMPLETED", "analysis", plain(read(hit)));
@@ -223,23 +267,46 @@ public class ExplicitAiService {
                 if (!classification.isEmpty()) {
                     evidence += "\nPrior classification (verify against Git): " + bounded((String) classification.get(0).get("result"), 1200);
                 }
+            } else if (type.equals("FILE_CHANGE") || type.equals("FILE_EVOLUTION")) {
+                evidence = fileHistory.evidence(Path.of(r.getLocalGitDirectory()), sha, path, type.equals("FILE_EVOLUTION"));
             } else if (type.equals("FILE_SNAPSHOT")) {
-                var file = git.getFileContent(Path.of(r.getLocalGitDirectory()), sha, path);
+                var file = git.getFileContent(Path.of(r.getLocalGitDirectory()), sha, path, fileMaxBytes);
                 if (file.binary()) {
                     throw new IllegalArgumentException("Binary files cannot be explained");
                 }
                 evidence = "Revision: " + sha + "\nFile: " + path + "\n" + bounded(file.content(), 12000);
+            } else if (type.equals("PERIOD")) {
+                var commits = (range ? git.getCommitsBetween(Path.of(r.getLocalGitDirectory()), fromSha, toSha) : git.getAllCommits(Path.of(r.getLocalGitDirectory()), sha)).stream().filter(c -> {
+                    var date = c.timestamp().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+                    return (start == null || !date.isBefore(start)) && (end == null || !date.isAfter(end));
+                }).toList();
+                if (commits.isEmpty()) {
+                    throw new IllegalArgumentException("No commits in this period");
+                }
+                StringBuilder context = new StringBuilder("Repository: " + r.getName() + "\nBranch head: " + sha + "\nScope: " + (range ? "Commits (start excluded, end included): " + fromSha + " to " + toSha : "Inclusive UTC dates: " + start + " to " + end) + "\nMatching commits: " + commits.size() + "\n");
+                var selected = commits.reversed().stream().limit(30).toList();
+                context.append("Evidence covers the latest ").append(selected.size()).append(" matching commits. Disclose if this is a partial sample.\n");
+                for (var c : selected) {
+                    context.append("SHA: ").append(c.sha()).append(" Date: ").append(c.timestamp()).append("\n");
+                    var summary = cached(r.getId(), "CLASSIFY", c.sha());
+                    if (!summary.isEmpty()) {
+                        context.append("Cached classification (verify against Git): ").append(bounded((String) summary.get(0).get("result"), 400)).append("\n");
+                    }
+                    context.append(commitEvidence(r, c.sha(), 350)).append("\n");
+                }
+                evidence = bounded(context.toString(), 16000);
             } else {
                 var tree = git.getRepositoryTree(Path.of(r.getLocalGitDirectory()), sha);
                 StringBuilder context = new StringBuilder("Repository: " + r.getName() + "\nRevision: " + sha + "\nPaths:\n");
                 paths(tree.root(), context);
                 for (String readme : List.of("README.md", "README", "readme.md")) {
                     try {
-                        var file = git.getFileContent(Path.of(r.getLocalGitDirectory()), sha, readme);
+                        var file = git.getFileContent(Path.of(r.getLocalGitDirectory()), sha, readme, fileMaxBytes);
                         if (!file.binary()) {
                             context.append("\nREADME:\n").append(bounded(file.content(), 5000));
-                        
-                        }break;
+
+                        }
+                        break;
                     } catch (Exception ignored) {
                         /* README is optional evidence. */ }
                 }
@@ -254,7 +321,7 @@ public class ExplicitAiService {
                 }
                 evidence = bounded(context.toString(), 16000);
             }
-            JsonNode result = generate(r.getId(), "Explain this " + type + " from the supplied evidence only. For a file describe its role and behavior at this revision. For a repository describe purpose, organization and supported workflows; disclose partial evidence. Return JSON with nonempty summary,purpose,significance,category,affectedComponents (string array),tags (string array). Category must be one of " + CATEGORIES + ". Be concise, do not invent behavior.", evidence);
+            JsonNode result = generate(r.getId(), "Explain this " + type + " from the supplied evidence only. For FILE_SNAPSHOT describe the file role and behavior. For FILE_CHANGE explain only the selected file patch and its effect, including additions/deletions/renames. For FILE_EVOLUTION describe chronological changes across the supplied file history and cite commit SHA prefixes; disclose bounded history and uncertain rename links. For a repository describe purpose, organization and supported workflows; disclose partial evidence. For a PERIOD synthesize themes and changes across the supplied commits within the date bounds, not a single commit; state when the sample is partial. Return JSON with nonempty summary,purpose,significance,category,affectedComponents (string array),tags (string array). Category must be one of " + CATEGORIES + ". Be concise, do not invent behavior.", evidence);
             for (String field : List.of("summary", "purpose", "significance")) {
                 text(result, field, 2500);
             }
@@ -302,8 +369,9 @@ public class ExplicitAiService {
                         for (var line : h.lines()) {
                             if (b.length() > limit) {
                                 break;
-                            
-                            }b.append(line.type()).append(" ").append(bounded(line.content(), 500)).append("\n");
+
+                            }
+                            b.append(line.type()).append(" ").append(bounded(line.content(), 500)).append("\n");
                         }
                     }
                 }
@@ -315,14 +383,16 @@ public class ExplicitAiService {
     static void text(JsonNode node, String key, int limit) {
         if (!node.path(key).isTextual() || node.path(key).asText().isBlank() || node.path(key).asText().length() > limit) {
             throw new IllegalArgumentException("Invalid AI field: " + key);
-    
-        }}
+
+        }
+    }
 
     static void category(JsonNode node) {
         if (!CATEGORIES.contains(node.path("category").asText())) {
             throw new IllegalArgumentException("Invalid category");
-    
-        }}
+
+        }
+    }
 
     static void tags(JsonNode node) {
         if (!node.path("tags").isArray() || node.path("tags").size() > 20) {

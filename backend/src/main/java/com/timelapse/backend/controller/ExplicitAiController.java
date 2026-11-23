@@ -26,7 +26,14 @@ public class ExplicitAiController {
         return service.classify(repoKey,branch); 
     }
 
-    @PostMapping("/explain") public Map<String,Object> explain(@PathVariable UUID repoKey,@RequestParam String type,@RequestParam String sha,@RequestParam(required=false) String path) { 
-        return service.explain(repoKey,type,sha,path); 
+    @PostMapping("/explain") public Map<String,Object> explain(@PathVariable UUID repoKey,
+        @RequestParam String type,
+        @RequestParam String sha,
+        @RequestParam(required=false) String path,
+        @RequestParam(required=false) String from,
+        @RequestParam(required=false) String to,
+        @RequestParam(required=false) String fromSha,
+        @RequestParam(required=false) String toSha) {
+        return service.explain(repoKey,type,sha,path,from,to,fromSha,toSha);
     }
 }
