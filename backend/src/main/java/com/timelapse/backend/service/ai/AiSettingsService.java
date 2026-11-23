@@ -16,22 +16,29 @@ import com.timelapse.backend.repository.RepositoryJpaRepository;
 
 @Service
 public class AiSettingsService {
+
     private final RepositoryJpaRepository repositories;
     private final AiRepositorySettingsJpaRepository settings;
+
     public AiSettingsService(RepositoryJpaRepository repositories, AiRepositorySettingsJpaRepository settings) {
-        this.repositories = repositories; this.settings = settings;
+        this.repositories = repositories;
+        this.settings = settings;
     }
+
     private RepositoryEntity requireRepository(UUID key) {
         return repositories.findByRepoKey(key).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Repository not found"));
     }
+
     private AiSettingsDto dto(AiRepositorySettingsEntity value) {
         return new AiSettingsDto(value.isAutoAnalyze());
     }
+
     @Transactional(readOnly = true)
     public AiSettingsDto get(UUID key) {
         RepositoryEntity repo = requireRepository(key);
         return settings.findById(repo.getId()).map(this::dto).orElse(new AiSettingsDto(false));
     }
+
     @Transactional
     public AiSettingsDto update(UUID key, UpdateAiSettingsRequest request) {
         RepositoryEntity repo = requireRepository(key);

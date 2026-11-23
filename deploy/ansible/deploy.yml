@@ -1,0 +1,43 @@
+---
+- name: Deploy Timelapse
+  hosts: oracle
+  become: true
+  vars:
+    app_dir: /opt/timelapse
+  tasks:
+    - name: Install Docker prerequisites
+      ansible.builtin.apt:
+        name: [docker.io, docker-compose-v2]
+        update_cache: true
+        state: present
+    - name: Start Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0700'
+    - name: Copy compose configuration
+      ansible.builtin.copy:
+        src: ../compose.yaml
+        dest: "{{ app_dir }}/compose.yaml"
+        mode: '0600'
+    - name: Copy production environment from controller
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../.env.production"
+        dest: "{{ app_dir }}/.env"
+        mode: '0600'
+      no_log: true
+    - name: Pull application images
+      ansible.builtin.command:
+        cmd: docker compose --env-file .env -f compose.yaml pull
+        chdir: "{{ app_dir }}"
+      changed_when: true
+    - name: Start containers
+      ansible.builtin.command:
+        cmd: docker compose --env-file .env -f compose.yaml up -d --remove-orphans
+        chdir: "{{ app_dir }}"
+      changed_when: true

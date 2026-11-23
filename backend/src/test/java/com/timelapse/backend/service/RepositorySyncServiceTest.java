@@ -15,7 +15,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.ArgumentMatchers.notNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +28,7 @@ import com.timelapse.backend.service.git.GitMiningService;
 import com.timelapse.backend.service.git.GitRepositoryService;
 import com.timelapse.backend.service.github.GitHubTokenService;
 import com.timelapse.backend.service.refactoring.RefactoringAnalysisService;
+import com.timelapse.backend.service.ai.analysis.AiCommitAnalysisService;
 import com.timelapse.backend.types.MonitoringType;
 
 class RepositorySyncServiceTest {
@@ -42,7 +42,7 @@ class RepositorySyncServiceTest {
 
         assertFalse(result.changed());
         assertEquals(0, result.commitsProcessed());
-        verify(f.gitMining, never()).getCommitsBetween(any(), any(), any());
+        verify(f.gitMining, never()).getCommitsForSync(any(), any(), any());
         verify(f.token, never()).getInstallationToken(anyLong());
     }
 
@@ -51,9 +51,7 @@ class RepositorySyncServiceTest {
         Fixture f = fixture(MonitoringType.POLLING, "old");
         when(f.git.repositoryExists(any())).thenReturn(true);
         when(f.git.getRemoteBranchHead(any(), eq("main"))).thenReturn("new");
-        when(f.gitMining.commitExists(any(), eq("old"))).thenReturn(true);
-        when(f.gitMining.isAncestor(any(), eq("old"), eq("new"))).thenReturn(true);
-        when(f.gitMining.getCommitsBetween(any(), eq("old"), eq("new")))
+        when(f.gitMining.getCommitsForSync(any(), eq("old"), eq("new")))
                 .thenReturn(List.of(new CommitDto("new", "message", "author", Instant.now())));
 
         var result = f.service.sync(1L);
@@ -61,6 +59,7 @@ class RepositorySyncServiceTest {
         assertTrue(result.changed());
         assertEquals("new", f.entity.getLastProcessedSha());
         assertEquals(1, result.commitsProcessed());
+        verify(f.refactoring).enqueueFromSync(1L, List.of("new"));
     }
 
     @Test
@@ -76,7 +75,7 @@ class RepositorySyncServiceTest {
         f.service.sync(1L);
 
         verify(f.token).getInstallationToken(987L);
-        verify(f.git).fetch(any(), notNull());
+        verify(f.git).fetch(any(), eq("x-access-token"), eq("temporary-token"));
     }
 
     @Test
@@ -88,7 +87,7 @@ class RepositorySyncServiceTest {
         f.service.sync(1L);
 
         verify(f.token, never()).getInstallationToken(anyLong());
-        verify(f.git).fetch(any(), isNull());
+        verify(f.git).fetch(any(), eq("x-access-token"), isNull());
     }
 
     private Fixture fixture(MonitoringType type, String sha) throws Exception {
@@ -97,6 +96,7 @@ class RepositorySyncServiceTest {
         GitMiningService gitMining = mock(GitMiningService.class);
         GitHubTokenService token = mock(GitHubTokenService.class);
         RefactoringAnalysisService refactoring = mock(RefactoringAnalysisService.class);
+        AiCommitAnalysisService aiCommitAnalysis = mock(AiCommitAnalysisService.class);
         RepositoryEntity entity = new RepositoryEntity();
         var idField = RepositoryEntity.class.getDeclaredField("id");
         idField.setAccessible(true);
@@ -110,9 +110,10 @@ class RepositorySyncServiceTest {
         entity.setLastProcessedSha(sha);
         when(repository.findById(1L)).thenReturn(Optional.of(entity));
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        return new Fixture(new RepositorySyncService(repository, git, gitMining, token, refactoring), repository, git, gitMining, token, entity);
+        return new Fixture(new RepositorySyncService(repository, git, gitMining, token, refactoring, aiCommitAnalysis), repository, git, gitMining, token, entity, refactoring);
     }
 
     private record Fixture(RepositorySyncService service, RepositoryJpaRepository repository,
-                           GitRepositoryService git, GitMiningService gitMining, GitHubTokenService token, RepositoryEntity entity) {}
+                           GitRepositoryService git, GitMiningService gitMining, GitHubTokenService token, RepositoryEntity entity,
+                           RefactoringAnalysisService refactoring) {}
 }

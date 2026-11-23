@@ -9,9 +9,11 @@ import TimeLine from "../components/TimeLine";
 import TimelineFilters from "../components/TimelineFilters";
 import ErrorFlag from "../components/ErrorFlag";
 import CommitSummary from "../components/CommitSummary";
-import AiCommitExplanation from "../components/ai/AiCommitExplanation";
+import AiExplanation from "../components/ai/AiExplanation";
+import AiCategories from "../components/ai/AiCategories";
+import type { Classification } from "../api/explicitAi";
 import RepositoryHeader from "../components/RepositoryHeader";
-import AiSettingsPanel from "../components/ai/AiSettingsPanel";
+
 import MetricsExplorer from "../components/MetricsExplorer";
 
 import { getRefactoringJob, analyzeRefactoring, retryRefactoring, getRefactoringSettings, updateRefactoringSettings, getRefactoringCoverage, startRefactoringHistory, type RefactoringCoverage } from "../api/refactoring";
@@ -24,6 +26,9 @@ const BASE_PLAY_INTERVAL_MS = 1200;
 export default function RepositoryPage() {
   const { repoKey } = useParams();
   // One repository-persisted preference controls both detection and visualization.
+  const [aiCategories, setAiCategories] = useState<Record<string, Classification>>({});
+  const [aiCategory, setAiCategory] = useState("");
+  const [aiTag, setAiTag] = useState("");
   const [showRefactorings, setShowRefactorings] = useState(false);
   const [refactoringPreferenceLoading, setRefactoringPreferenceLoading] = useState(true);
   const [refactoringPreferenceSaving, setRefactoringPreferenceSaving] = useState(false);
@@ -135,8 +140,10 @@ export default function RepositoryPage() {
     return (authors.length === 0 || authors.includes(commit.author)) &&
       (!fromDate || date >= fromDate) && (!toDate || date <= toDate) &&
       commit.message.toLowerCase().includes(messageQuery.trim().toLowerCase()) &&
-      matchesRefactoringFilter(commit.sha) ? [i] : [];
-  }), [commits, authors, fromDate, toDate, messageQuery, onlyRefactoringCommits, selectedRefactoringTypes, showRefactorings, coverageBySha]);
+      matchesRefactoringFilter(commit.sha) &&
+      (!aiCategory || aiCategories[commit.sha]?.category === aiCategory) &&
+      (!aiTag || aiCategories[commit.sha]?.tags.includes(aiTag)) ? [i] : [];
+  }), [commits, authors, fromDate, toDate, messageQuery, onlyRefactoringCommits, selectedRefactoringTypes, showRefactorings, coverageBySha, aiCategories, aiCategory, aiTag]);
   const visibleCommits = useMemo(() => filteredIndices.map(i => commits[i]), [commits, filteredIndices]);
   const visibleIndex = filteredIndices.indexOf(index);
   const selected = commits[index] ?? null;
@@ -527,7 +534,7 @@ export default function RepositoryPage() {
           syncing={syncing}
           onSync={sync}
           metricsOpen={metricsOpen}
-          aiControl={repoKey && repository ? <AiSettingsPanel repoKey={repoKey} /> : undefined}
+          aiControl={repoKey && repository && historyHeadSha ? <AiExplanation repoKey={repoKey} sha={historyHeadSha} type="REPOSITORY" label="Explain repo" /> : undefined}
           onExploreMetrics={() => {
             if (!metricsOpen) setMetricsOpen(true);
             else metricsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -552,7 +559,7 @@ export default function RepositoryPage() {
                   {refactoringPreferenceError && <button type="button" className="refactoring-retry" title={refactoringPreferenceError} onClick={()=>{ if(repoKey) { setRefactoringPreferenceError(null); setRefactoringPreferenceLoading(true); void getRefactoringSettings(repoKey).then(v=>setShowRefactorings(v.enabled)).catch(()=>setRefactoringPreferenceError("Could not load refactoring preference")).finally(()=>setRefactoringPreferenceLoading(false)); } }}>Retry</button>}
                   {showRefactorings && historyError && <button type="button" className="refactoring-retry" title={historyError} onClick={() => setHistoryRefreshVersion(v => v + 1)}>Retry analysis</button>}
                 </div>}
-                filters={<TimelineFilters
+                filters={<><AiCategories repoKey={repoKey!} branch={branch} onUpdate={setAiCategories} category={aiCategory} tag={aiTag} onCategory={setAiCategory} onTag={setAiTag} /><TimelineFilters
               allCommits={commits} matchedCount={visibleCommits.length}
               authors={authors} onAuthorsChange={setAuthors}
               fromDate={fromDate} onFromDateChange={setFromDate}
@@ -563,7 +570,7 @@ export default function RepositoryPage() {
               availableRefactoringTypes={availableRefactoringTypes}
               selectedRefactoringTypes={selectedRefactoringTypes} onSelectedRefactoringTypesChange={setSelectedRefactoringTypes}
               analysisIncomplete={!!refactoringCoverage && refactoringCoverage.pending + refactoringCoverage.failed > 0}
-            />}
+            /></>}
                 commits={visibleCommits}
                 currentIndex={Math.max(0, visibleIndex)}
                 playing={playing}
@@ -574,9 +581,11 @@ export default function RepositoryPage() {
               />
 
               <CommitSummary commit={selected} detail={detail?.sha === selected?.sha ? detail : null}
+                action={repoKey && selected ? <AiExplanation repoKey={repoKey} sha={selected.sha} type="COMMIT" label="Explain commit" /> : undefined}
+                category={selected ? aiCategories[selected.sha]?.category : undefined}
                 flag={showRefactorings && selected && (coverageBySha.get(selected.sha)?.status === "FAILED" || refactoringError) ?
                   <ErrorFlag message={refactoringError || "Refactoring analysis incomplete. Retry with more time."} busy={refactoringLoading} onRetry={() => void runRefactoring(true)} /> : undefined} />
-              {repoKey && selected && <AiCommitExplanation repoKey={repoKey} sha={selected.sha} />}
+
 
             </section>
 
@@ -601,6 +610,7 @@ export default function RepositoryPage() {
               {selectedPath && <div className="card workspace-diff">
                 <div className="viewport-heading">
                   <div><h2>{selectedPath}</h2><p className="muted">File viewer</p></div>
+                  {repoKey && selected && <AiExplanation repoKey={repoKey} sha={selected.sha} path={selectedPath} type="FILE_SNAPSHOT" label="Explain file" />}
                   {selectedPath && <button type="button" className="secondary-button clear-file" onClick={backToTree}>Back to tree</button>}
                 </div>
                 {displayedFileFrame?.path === selectedPath ? (

@@ -9,6 +9,7 @@ import java.util.Map;
 public final class MetricRegistry {
 
     // To add a metric, add its class here. No metric class-name strings are needed.
+    // file extract
     private static final List<Class<? extends Metric>> REGISTERED = List.of(
             ActivityMetric.class,
             ContributorMetric.class,

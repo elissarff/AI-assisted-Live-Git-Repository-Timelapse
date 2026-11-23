@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: {options: {max-size: "10m", max-file: "3"}}
+  backend:
+    image: ${BACKEND_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      DATABASE_USERNAME: ${DB_USERNAME}
+      DATABASE_PASSWORD: ${DB_PASSWORD}
+      REPOSITORIES_DIRECTORY: /data/repositories
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+      JAVA_TOOL_OPTIONS: -Xms256m -Xmx4g
+    volumes:
+      - repositories:/data/repositories
+    mem_limit: 6g
+    logging: {options: {max-size: "10m", max-file: "3"}}
+  web:
+    image: ${FRONTEND_IMAGE}
+    restart: unless-stopped
+    depends_on: [backend]
+    ports:
+      - "${PUBLIC_BIND:-127.0.0.1}:80:80"
+    logging: {options: {max-size: "10m", max-file: "3"}}
+volumes:
+  postgres_data:
+  repositories:

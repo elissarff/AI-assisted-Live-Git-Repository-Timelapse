@@ -1,0 +1,7 @@
+:80 {
+  root * /srv
+  @api path /api/* /health
+  reverse_proxy @api backend:8080
+  try_files {path} /index.html
+  file_server
+}
