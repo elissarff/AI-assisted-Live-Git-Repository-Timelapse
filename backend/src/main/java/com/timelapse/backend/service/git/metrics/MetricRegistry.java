@@ -5,23 +5,48 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** The only place where metric implementations are registered and constructed. */
+/**
+ * The only place where metric implementations are registered and constructed.
+ */
 public final class MetricRegistry {
 
-    // To add a metric, add its class here. No metric class-name strings are needed.
-    // file extract
-    private static final List<Class<? extends Metric>> REGISTERED = List.of(
-            ActivityMetric.class,
-            ContributorMetric.class,
-            FileHotspotMetric.class,
-            DirectoryMetric.class,
-            CoChangeMetric.class,
-            ChurnMetric.class
-    );
+    // Add implementation names to metrics.txt in this package.
+    private static final List<Class<? extends Metric>> REGISTERED = loadRegistered();
 
-    private MetricRegistry() {}
+    private static List<Class<? extends Metric>> loadRegistered() {
+        var input = MetricRegistry.class.getResourceAsStream("metrics.txt");
+        if (input == null) {
+            throw new IllegalStateException("Missing metric registry resource: metrics.txt");
+        }
+        var types = new java.util.LinkedHashSet<Class<? extends Metric>>();
+        try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(input, java.nio.charset.StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String name = line.strip();
+                if (name.isEmpty() || name.startsWith("#")) {
+                    continue;
+                }
+                String className = name.contains(".") ? name : MetricRegistry.class.getPackageName() + "." + name;
+                Class<? extends Metric> type = Class.forName(className).asSubclass(Metric.class);
+                if (!types.add(type)) {
+                    throw new IllegalStateException("Duplicate metric: " + name);
+                }
+            }
+        } catch (java.io.IOException | ClassNotFoundException | ClassCastException e) {
+            throw new IllegalStateException("Cannot load metric registry from metrics.txt", e);
+        }
+        if (types.isEmpty()) {
+            throw new IllegalStateException("No metrics registered in metrics.txt");
+        }
+        return List.copyOf(types);
+    }
 
-    /** Create fresh, independent metric instances for each calculation. */
+    private MetricRegistry() {
+    }
+
+    /**
+     * Create fresh, independent metric instances for each calculation.
+     */
     public static Map<Class<? extends Metric>, Metric> createAll() {
         Map<Class<? extends Metric>, Metric> metrics = new LinkedHashMap<>();
         for (Class<? extends Metric> type : REGISTERED) {
@@ -30,18 +55,25 @@ public final class MetricRegistry {
         return metrics;
     }
 
-    /** Serialize registered metric results without requiring service-specific fields. */
+    /**
+     * Serialize registered metric results without requiring service-specific
+     * fields.
+     */
     public static Map<String, Object> results(Iterable<Metric> metrics) {
         Map<String, Object> values = new LinkedHashMap<>();
         for (Metric metric : metrics) {
             // Churn is already included as a legacy top-level summary field.
-            if (metric instanceof ChurnMetric) continue;
+            if (metric instanceof ChurnMetric) {
+                continue;
+            }
             values.put(metric.name(), metric.result());
         }
         return values;
     }
 
-    /** Find a metric by its public API name, as declared by Metric.name(). */
+    /**
+     * Find a metric by its public API name, as declared by Metric.name().
+     */
     public static Metric createByName(String name) {
         for (Class<? extends Metric> type : REGISTERED) {
             Metric metric = instantiate(type);
@@ -52,7 +84,9 @@ public final class MetricRegistry {
         throw new IllegalArgumentException("Unknown metric: " + name);
     }
 
-    /** Reflectively call the no-argument constructor. */
+    /**
+     * Reflectively call the no-argument constructor.
+     */
     public static <T extends Metric> T create(Class<T> type) {
         if (!REGISTERED.contains(type)) {
             throw new IllegalArgumentException("Unregistered metric: " + type.getName());
@@ -63,8 +97,8 @@ public final class MetricRegistry {
     private static <T extends Metric> T instantiate(Class<T> type) {
         try {
             return type.getDeclaredConstructor().newInstance();
-        } catch (InstantiationException | IllegalAccessException |
-                 InvocationTargetException | NoSuchMethodException e) {
+        } catch (InstantiationException | IllegalAccessException
+                | InvocationTargetException | NoSuchMethodException e) {
             throw new IllegalStateException("Cannot instantiate metric: " + type.getName(), e);
         }
     }

@@ -1,0 +1,7 @@
+# Metric implementation classes, in registration order.
+ActivityMetric
+ContributorMetric
+FileHotspotMetric
+DirectoryMetric
+CoChangeMetric
+ChurnMetric
