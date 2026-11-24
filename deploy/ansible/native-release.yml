@@ -1,0 +1,166 @@
+---
+- name: Build and release GitLapse
+  hosts: oracle
+  become: true
+  vars:
+    release_dir: "/opt/gitlapse/releases/{{ release_id }}"
+    build_dir: "/home/ubuntu/gitlapse-build/{{ release_id }}"
+  tasks:
+    - name: Validate release inputs
+      ansible.builtin.assert:
+        that:
+          - release_id is match('^[A-Za-z0-9_-]+$')
+          - backend_source_archive is defined
+          - frontend_source_archive is defined or frontend_archive is defined
+
+    - name: Create release and build directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.owner }}"
+        mode: '0755'
+      loop:
+        - {path: "{{ release_dir }}/frontend", owner: root}
+        - {path: "{{ build_dir }}", owner: ubuntu}
+
+    - name: Create frontend build directory
+      ansible.builtin.file:
+        path: "{{ build_dir }}/frontend"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      when: frontend_source_archive is defined
+
+    - name: Upload frontend source without development secrets
+      ansible.builtin.unarchive:
+        src: "{{ frontend_source_archive }}"
+        dest: "{{ build_dir }}/frontend"
+        owner: ubuntu
+        group: ubuntu
+      when: frontend_source_archive is defined
+
+    - name: Install locked frontend dependencies on the VM
+      ansible.builtin.command:
+        argv: [sudo, -u, ubuntu, /usr/local/bin/npm, ci]
+        chdir: "{{ build_dir }}/frontend"
+      async: 600
+      poll: 10
+      changed_when: true
+      when: frontend_source_archive is defined
+
+    - name: Build production frontend on the VM
+      ansible.builtin.command:
+        argv: [sudo, -u, ubuntu, env, 'VITE_API_BASE_URL=', /usr/local/bin/npm, run, build]
+        chdir: "{{ build_dir }}/frontend"
+      async: 600
+      poll: 10
+      changed_when: true
+      when: frontend_source_archive is defined
+
+    - name: Upload backend source without local credentials
+      ansible.builtin.unarchive:
+        src: "{{ backend_source_archive }}"
+        dest: "{{ build_dir }}"
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Build and test backend with the VM Java 25 runtime
+      ansible.builtin.command:
+        argv: [sudo, -u, ubuntu, /usr/bin/mvn, -B, -ntp, clean, verify]
+        chdir: "{{ build_dir }}"
+      async: 1800
+      poll: 10
+      changed_when: true
+
+    - name: Install executable backend artifact
+      ansible.builtin.copy:
+        src: "{{ build_dir }}/target/backend-0.0.1-SNAPSHOT.jar"
+        remote_src: true
+        dest: "{{ release_dir }}/backend.jar"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install production frontend
+      ansible.builtin.unarchive:
+        src: "{{ frontend_archive }}"
+        dest: "{{ release_dir }}/frontend"
+        owner: root
+        group: root
+        mode: 'u=rwX,go=rX'
+      when: frontend_source_archive is not defined
+
+    - name: Install frontend built on the VM
+      ansible.builtin.copy:
+        src: "{{ build_dir }}/frontend/dist/"
+        dest: "{{ release_dir }}/frontend/"
+        remote_src: true
+        owner: root
+        group: root
+        mode: 'u=rwX,go=rX'
+      when: frontend_source_archive is defined
+
+    - name: Record deployed source and workflow
+      ansible.builtin.copy:
+        dest: "{{ release_dir }}/release.json"
+        mode: '0644'
+        content: "{{ {'release_id': release_id, 'source_branch': source_branch | default('manual'), 'source_commit': source_commit | default(none), 'workflow_run_url': workflow_run_url | default(none), 'deployed_at': ansible_facts.date_time.iso8601} | to_nice_json }}\n"
+
+    - name: Back up PostgreSQL before activating migrations
+      ansible.builtin.command: /etc/cron.daily/gitlapse-backup
+      changed_when: true
+
+    - name: Record previous release for rollback
+      ansible.builtin.stat:
+        path: /opt/gitlapse/current
+      register: previous_release
+
+    - name: Activate and verify release
+      block:
+        - name: Switch current release
+          ansible.builtin.file:
+            src: "{{ release_dir }}"
+            dest: /opt/gitlapse/current
+            state: link
+            force: true
+        - name: Restart backend
+          ansible.builtin.systemd_service:
+            name: gitlapse
+            daemon_reload: true
+            enabled: true
+            state: restarted
+        - name: Wait for backend health
+          ansible.builtin.uri:
+            url: http://127.0.0.1:8080/health
+            return_content: true
+            status_code: 200
+          register: backend_health
+          until: backend_health.status == 200
+          retries: 30
+          delay: 3
+        - name: Verify frontend through Nginx
+          ansible.builtin.uri:
+            url: "{{ health_base_url | default('http://127.0.0.1') }}/"
+            status_code: 200
+        - name: Verify API routing through Nginx
+          ansible.builtin.uri:
+            url: "{{ health_base_url | default('http://127.0.0.1') }}/health"
+            status_code: 200
+      rescue:
+        - name: Restore previous release
+          ansible.builtin.file:
+            src: "{{ previous_release.stat.lnk_source }}"
+            dest: /opt/gitlapse/current
+            state: link
+            force: true
+          when: previous_release.stat.islnk | default(false)
+        - name: Restart previous backend
+          ansible.builtin.systemd_service:
+            name: gitlapse
+            state: restarted
+          when: previous_release.stat.islnk | default(false)
+        - name: Report failed deployment
+          ansible.builtin.fail:
+            msg: Health verification failed. Previous release restored if available; inspect journalctl -u gitlapse.

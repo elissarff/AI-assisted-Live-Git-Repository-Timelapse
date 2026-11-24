@@ -1,0 +1,28 @@
+[Unit]
+Description=GitLapse Spring Boot backend
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=gitlapse
+Group=gitlapse
+WorkingDirectory=/var/lib/gitlapse
+EnvironmentFile=/etc/gitlapse/backend.env
+Environment=HOME=/var/lib/gitlapse
+ExecStart=/usr/bin/java -Xms256m -Xmx3g -jar /opt/gitlapse/current/backend.jar
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gitlapse
+MemoryMax=8G
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,33 @@
+---
+- name: Apply Ubuntu updates and verify services after reboot
+  hosts: oracle
+  become: true
+  tasks:
+    - name: Apply available package upgrades
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: safe
+
+    - name: Check reboot requirement
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Reboot when required by Ubuntu
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        post_reboot_delay: 10
+      when: reboot_required.stat.exists
+
+    - name: Wait for backend after maintenance
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/health
+        status_code: 200
+      register: backend_health
+      until: backend_health.status == 200
+      retries: 30
+      delay: 3
+
+    - name: Verify Nginx is running
+      ansible.builtin.command: systemctl is-active nginx
+      changed_when: false

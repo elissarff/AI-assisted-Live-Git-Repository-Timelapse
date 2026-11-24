@@ -27,7 +27,7 @@
 		<url/>
 	</scm>
 	<properties>
-		<java.version>21</java.version>
+		<java.version>25</java.version>
 		<!-- RefactoringMiner 3.1.6 uses the Kotlin 2.4.20 compiler API. -->
 		<kotlin.version>2.4.20</kotlin.version>
 	</properties>

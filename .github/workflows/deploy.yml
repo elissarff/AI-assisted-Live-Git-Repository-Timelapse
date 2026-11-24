@@ -1,0 +1,92 @@
+name: Deploy GitLapse to Oracle
+run-name: Deploy ${{ github.sha }} to gitlapse.dev
+
+on:
+  push:
+    branches: [deploy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitlapse-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/deploy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://gitlapse.dev
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the exact deploy commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install Ansible
+        run: python -m pip install --disable-pip-version-check ansible-core==2.21.6
+      - name: Configure deployment SSH key and pinned VM identity
+        env:
+          SSH_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" || { echo 'Missing production secret ORACLE_SSH_PRIVATE_KEY'; exit 1; }
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/gitlapse_actions"
+          cp deploy/ansible/known_hosts "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -P '' -f "$HOME/.ssh/gitlapse_actions" > /dev/null
+          cat > "$RUNNER_TEMP/inventory.ini" <<EOF
+          [oracle]
+          node-01 ansible_host=168.138.91.25 ansible_user=ubuntu ansible_python_interpreter=/usr/bin/python3 ansible_ssh_private_key_file=$HOME/.ssh/gitlapse_actions ansible_ssh_common_args='-o StrictHostKeyChecking=yes -o IdentitiesOnly=yes'
+          EOF
+      - name: Package source without development secrets or dependencies
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/backend-source.tar.gz" -C backend pom.xml src
+          tar --exclude=node_modules --exclude=dist --exclude='*.tsbuildinfo' --exclude='.env*' \
+            -czf "$RUNNER_TEMP/frontend-source.tar.gz" -C frontend .
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run_url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          variables = {
+              "release_id": f"gha-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}-{os.environ['GITHUB_SHA'][:12]}",
+              "backend_source_archive": f"{os.environ['RUNNER_TEMP']}/backend-source.tar.gz",
+              "frontend_source_archive": f"{os.environ['RUNNER_TEMP']}/frontend-source.tar.gz",
+              "source_branch": "deploy",
+              "source_commit": os.environ['GITHUB_SHA'],
+              "workflow_run_url": run_url,
+              "health_base_url": "https://gitlapse.dev",
+          }
+          Path(os.environ['RUNNER_TEMP'], 'release-vars.json').write_text(json.dumps(variables))
+          PY
+      - name: Configure VM services with Ansible
+        run: ansible-playbook -i "$RUNNER_TEMP/inventory.ini" deploy/ansible/native.yml
+      - name: Build, test, and restart the app on the VM
+        run: ansible-playbook -i "$RUNNER_TEMP/inventory.ini" deploy/ansible/native-release.yml -e "@$RUNNER_TEMP/release-vars.json"
+      - name: Verify the public deployment matches this commit
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 https://gitlapse.dev/health
+          curl --fail --silent --show-error "https://gitlapse.dev/deployment.json?run=$GITHUB_RUN_ID" > "$RUNNER_TEMP/deployment.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          deployment = json.loads(Path(os.environ['RUNNER_TEMP'], 'deployment.json').read_text())
+          assert deployment['source_commit'] == os.environ['GITHUB_SHA'], deployment
+          assert deployment['source_branch'] == 'deploy', deployment
+          PY
+          printf '### GitLapse deployed\n\n- URL: https://gitlapse.dev\n- Branch: `deploy`\n- Commit: `%s`\n- Build and tests ran on the Oracle VM.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary SSH credentials
+        if: always()
+        run: rm -f "$HOME/.ssh/gitlapse_actions" "$RUNNER_TEMP/inventory.ini"

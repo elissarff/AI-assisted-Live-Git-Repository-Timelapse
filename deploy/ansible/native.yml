@@ -1,0 +1,259 @@
+---
+- name: Configure GitLapse directly on Ubuntu
+  hosts: oracle
+  become: true
+  vars:
+    app_root: /opt/gitlapse
+    public_hostname: gitlapse.dev
+    node_version: 24.18.1
+  tasks:
+    - name: Install application and maintenance packages
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - openjdk-25-jdk-headless
+          - maven
+          - postgresql
+          - git
+          - certbot
+          - python3-certbot-nginx
+          - unattended-upgrades
+          - iptables-persistent
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Download verified Node.js ARM64 runtime
+      ansible.builtin.get_url:
+        url: "https://nodejs.org/dist/v{{ node_version }}/node-v{{ node_version }}-linux-arm64.tar.xz"
+        dest: "/opt/node-v{{ node_version }}-linux-arm64.tar.xz"
+        checksum: sha256:7201e3a09dc825bac57867c81913e2b8f0ef87d04cb9082af4cda82f6ff3d88c
+        mode: '0644'
+
+    - name: Install Node.js on the VM for frontend builds
+      ansible.builtin.unarchive:
+        src: "/opt/node-v{{ node_version }}-linux-arm64.tar.xz"
+        dest: /opt
+        remote_src: true
+        creates: "/opt/node-v{{ node_version }}-linux-arm64/bin/node"
+
+    - name: Make Node.js and npm available to the build account
+      ansible.builtin.file:
+        src: "/opt/node-v{{ node_version }}-linux-arm64/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+      loop: [node, npm, npx]
+
+    - name: Enable PostgreSQL
+      ansible.builtin.service:
+        name: postgresql
+        enabled: true
+        state: started
+
+    - name: Create application account
+      ansible.builtin.user:
+        name: gitlapse
+        system: true
+        home: /var/lib/gitlapse
+        shell: /usr/sbin/nologin
+        create_home: true
+
+    - name: Create application directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.owner }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /etc/gitlapse, owner: root, mode: '0700'}
+        - {path: /opt/gitlapse, owner: root, mode: '0755'}
+        - {path: /var/www/gitlapse, owner: root, mode: '0755'}
+        - {path: /var/www/letsencrypt, owner: root, mode: '0755'}
+        - {path: /var/lib/gitlapse/repositories, owner: gitlapse, mode: '0700'}
+        - {path: /var/backups/gitlapse, owner: root, mode: '0700'}
+
+    - name: Generate database password once on the VM
+      ansible.builtin.shell: umask 077; openssl rand -hex 32 > /etc/gitlapse/db-password
+      args:
+        creates: /etc/gitlapse/db-password
+      no_log: true
+
+    - name: Read database password
+      ansible.builtin.slurp:
+        src: /etc/gitlapse/db-password
+      register: database_password
+      no_log: true
+
+    - name: Create restricted PostgreSQL application role
+      ansible.builtin.command:
+        argv: [sudo, -u, postgres, psql, -v, ON_ERROR_STOP=1, -tAc, "SELECT 1 FROM pg_roles WHERE rolname = 'gitlapse'"]
+      register: database_role
+      changed_when: false
+
+    - name: Initialize database role
+      ansible.builtin.command:
+        argv: [sudo, -u, postgres, psql, -v, ON_ERROR_STOP=1]
+        stdin: "CREATE ROLE gitlapse LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '{{ database_password.content | b64decode | trim }}';"
+      when: database_role.stdout | trim != '1'
+      no_log: true
+
+    - name: Check application database
+      ansible.builtin.command:
+        argv: [sudo, -u, postgres, psql, -v, ON_ERROR_STOP=1, -tAc, "SELECT 1 FROM pg_database WHERE datname = 'git_timelapse'"]
+      register: database_exists
+      changed_when: false
+
+    - name: Create application database
+      ansible.builtin.command:
+        argv: [sudo, -u, postgres, createdb, -O, gitlapse, git_timelapse]
+      when: database_exists.stdout | trim != '1'
+
+    - name: Write initial application environment without replacing later credentials
+      ansible.builtin.copy:
+        dest: /etc/gitlapse/backend.env
+        owner: root
+        group: root
+        mode: '0600'
+        force: false
+        content: |
+          SERVER_ADDRESS=127.0.0.1
+          SERVER_PORT=8080
+          DATABASE_URL=jdbc:postgresql://127.0.0.1:5432/git_timelapse
+          DATABASE_USERNAME=gitlapse
+          DATABASE_PASSWORD={{ database_password.content | b64decode | trim }}
+          REPOSITORIES_DIRECTORY=/var/lib/gitlapse/repositories
+          FRONTEND_ORIGIN=http://{{ public_hostname }}
+          GITHUB_APP_ID=
+          GITHUB_APP_PRIVATE_KEY=
+          GITHUB_APP_SLUG=
+          GITHUB_WEBHOOK_SECRET={{ lookup('ansible.builtin.password', '/dev/null', length=64, chars=['ascii_letters', 'digits']) }}
+          GEMINI_API_KEY=
+          REFACTORING_HISTORY_WORKERS=2
+      no_log: true
+
+    - name: Configure backend service
+      ansible.builtin.template:
+        src: templates/gitlapse.service.j2
+        dest: /etc/systemd/system/gitlapse.service
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Check for existing domain certificate
+      ansible.builtin.stat:
+        path: "/etc/letsencrypt/live/{{ public_hostname }}/fullchain.pem"
+      register: domain_certificate
+
+    - name: Check for deployed backend
+      ansible.builtin.stat:
+        path: /opt/gitlapse/current/backend.jar
+      register: backend_artifact
+
+    - name: Set application origin for the active domain and protocol
+      ansible.builtin.lineinfile:
+        path: /etc/gitlapse/backend.env
+        regexp: '^FRONTEND_ORIGIN='
+        line: "FRONTEND_ORIGIN={{ 'https' if domain_certificate.stat.exists else 'http' }}://{{ public_hostname }}"
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      notify: Restart backend if deployed
+
+    - name: Configure Nginx
+      ansible.builtin.template:
+        src: templates/nginx.conf.j2
+        dest: /etc/nginx/sites-available/gitlapse
+        mode: '0644'
+      notify: Reload Nginx
+
+    - name: Enable GitLapse site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/gitlapse
+        dest: /etc/nginx/sites-enabled/gitlapse
+        state: link
+      notify: Reload Nginx
+
+    - name: Disable default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Reload Nginx
+
+    - name: Allow web traffic before the Oracle image reject rule
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "{{ item }}"
+        jump: ACCEPT
+        action: insert
+        rule_num: 4
+        comment: GitLapse web traffic
+      loop: ['80', '443']
+      register: web_firewall
+
+    - name: Persist host firewall
+      ansible.builtin.command: netfilter-persistent save
+      when: web_firewall.changed
+
+    - name: Enable Nginx
+      ansible.builtin.service:
+        name: nginx
+        enabled: true
+        state: started
+
+    - name: Install daily PostgreSQL backup script
+      ansible.builtin.copy:
+        dest: /etc/cron.daily/gitlapse-backup
+        mode: '0700'
+        content: |
+          #!/bin/sh
+          set -eu
+          umask 077
+          backup="/var/backups/gitlapse/git_timelapse-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          sudo -u postgres pg_dump -Fc git_timelapse > "$backup.tmp"
+          mv "$backup.tmp" "$backup"
+          find /var/backups/gitlapse -type f -name '*.dump' -mtime +7 -delete
+
+    - name: Enable automatic package security updates
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: '0644'
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+
+    - name: Create certificate renewal hook directory
+      ansible.builtin.file:
+        path: /etc/letsencrypt/renewal-hooks/deploy
+        state: directory
+        mode: '0755'
+
+    - name: Reload Nginx after certificate renewal
+      ansible.builtin.copy:
+        dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
+        mode: '0755'
+        content: |
+          #!/bin/sh
+          set -eu
+          /usr/sbin/nginx -t
+          /usr/bin/systemctl reload nginx
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+    - name: Reload Nginx
+      ansible.builtin.command: nginx -t
+      changed_when: true
+      notify: Apply Nginx configuration
+    - name: Apply Nginx configuration
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+    - name: Restart backend if deployed
+      ansible.builtin.systemd_service:
+        name: gitlapse
+        daemon_reload: true
+        state: restarted
+      when: backend_artifact.stat.exists

@@ -1,0 +1,65 @@
+{% if domain_certificate.stat.exists %}
+server {
+    listen 80 default_server;
+    server_name {{ public_hostname }};
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+    location / {
+        return 301 https://{{ public_hostname }}$request_uri;
+    }
+}
+{% endif %}
+server {
+{% if domain_certificate.stat.exists %}
+    listen 443 ssl default_server;
+    ssl_certificate /etc/letsencrypt/live/{{ public_hostname }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ public_hostname }}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+{% else %}
+    listen 80 default_server;
+{% endif %}
+    server_name {{ public_hostname }};
+    root /opt/gitlapse/current/frontend;
+    index index.html;
+    server_tokens off;
+    client_max_body_size 2m;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+    }
+
+    location = /health {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+    }
+
+    location = /deployment.json {
+        alias /opt/gitlapse/current/release.json;
+        add_header Cache-Control "no-store";
+        default_type application/json;
+    }
+
+    location ^~ /assets/ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}
